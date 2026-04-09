@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "jsx": "react-jsx"
+  },
+  "references": [
+    { "path": "../../packages/shared" },
+    { "path": "../../packages/ui-schema" }
+  ],
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
+}
+

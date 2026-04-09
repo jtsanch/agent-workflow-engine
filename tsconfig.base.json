@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022", "DOM"],
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "sourceMap": true,
+    "composite": true,
+    "baseUrl": ".",
+    "paths": {
+      "@personal-agent-os/shared": ["packages/shared/src/index.ts"],
+      "@personal-agent-os/agent-sdk": ["packages/agent-sdk/src/index.ts"],
+      "@personal-agent-os/ui-schema": ["packages/ui-schema/src/index.ts"],
+      "@personal-agent-os/observability": ["packages/observability/src/index.ts"]
+    }
+  }
+}
+

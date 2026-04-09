@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ChangeListManager">
+    <list default="true" id="f1016c69-5c1a-40be-9300-068ee36f04d3" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/api/.env.example" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/api/Dockerfile" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/api/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/api/src/common/error-handler.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/api/src/common/errors.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/api/src/common/http.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/api/src/common/ids.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/api/src/config/env.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/api/src/db/database.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/api/src/db/migrate.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/api/src/db/migrations/001_jobs.sql" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/api/src/db/migrations/002_job_schedules.sql" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/api/src/db/migrations/003_job_alert_preferences.sql" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/api/src/db/migrations/004_job_runs.sql" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/api/src/db/migrations/005_job_run_steps.sql" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/api/src/db/migrations/006_tool_invocations.sql" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/api/src/db/migrations/007_feedback_events.sql" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/api/src/db/migrations/008_job_memories.sql" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/api/src/db/seed.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/api/src/modules/agents/controller.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/api/src/modules/alerts/controller.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/api/src/modules/health/controller.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/api/src/modules/jobs/controller.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/api/src/modules/runs/controller.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/api/src/repositories/interfaces.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/api/src/repositories/memory.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/api/src/repositories/postgres.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/api/src/repositories/sql-helpers.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/api/src/services/agent-catalog.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/api/src/services/alerts-service.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/api/src/services/jobs-service.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/api/src/services/runs-service.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/api/src/start.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/api/src/stub-user-context.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/api/src/worker-compat/tool-registry.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/api/tsconfig.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/web/index.html" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/web/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/web/src/App.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/web/src/components/PageHeader.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/web/src/lib/api.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/web/src/main.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/web/src/pages/CreateJobPage.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/web/src/pages/JobsPage.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/web/src/pages/RunsPage.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/web/src/styles.css" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/web/tsconfig.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/web/vite.config.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/worker/.env.example" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/worker/Dockerfile" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/worker/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/worker/src/agents/index.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/worker/src/config/env.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/worker/src/runtime/evaluator.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/worker/src/runtime/executor.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/worker/src/runtime/job-runner.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/worker/src/runtime/memory.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/worker/src/runtime/planner.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/worker/src/runtime/queue-worker.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/worker/src/start.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/worker/src/tools/registry.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/apps/worker/tsconfig.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/adr/001-why-monorepo.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/adr/002-why-jobs-first-class.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/adr/003-why-config-driven-ui.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/architecture/overview.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/infra/terraform/envs/dev/main.tf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/infra/terraform/envs/dev/outputs.tf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/infra/terraform/envs/dev/variables.tf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/infra/terraform/modules/alb/main.tf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/infra/terraform/modules/cloudfront/main.tf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/infra/terraform/modules/ecr/main.tf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/infra/terraform/modules/ecs-service/main.tf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/infra/terraform/modules/eventbridge-scheduler/main.tf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/infra/terraform/modules/iam/main.tf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/infra/terraform/modules/network/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/infra/terraform/modules/network/main.tf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/infra/terraform/modules/rds-postgres/main.tf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/infra/terraform/modules/s3-frontend/main.tf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/infra/terraform/modules/secrets/main.tf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/packages/agent-sdk/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/packages/agent-sdk/src/index.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/packages/agent-sdk/tsconfig.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/packages/observability/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/packages/observability/src/index.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/packages/observability/tsconfig.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/packages/shared/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/packages/shared/src/domain/types.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/packages/shared/src/index.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/packages/shared/src/prompts/helpers.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/packages/shared/src/schemas/domain.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/packages/shared/tsconfig.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/packages/ui-schema/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/packages/ui-schema/src/index.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/packages/ui-schema/tsconfig.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/pnpm-workspace.yaml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tsconfig.base.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tsconfig.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/turbo.json" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="CopilotPersistence">
+    <persistenceIdMap>
+      <entry key="_/Users/travis/projects/agent-platform" value="3C3vZzTLhVIIgrADGpqSUHLZklx" />
+    </persistenceIdMap>
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 8
+}</component>
+  <component name="ProjectId" id="3C3vZzTLhVIIgrADGpqSUHLZklx" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
+    "javascript.preferred.runtime.type.id": "node",
+    "last_opened_file_path": "/Users/travis/projects/agent-platform",
+    "nodejs_package_manager_path": "npm",
+    "ts.external.directory.path": "/Users/travis/projects/agent-platform/node_modules/typescript/lib",
+    "vue.rearranger.settings.migration": "true"
+  }
+}]]></component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-js-predefined-d6986cc7102b-9b0f141eb926-JavaScript-WS-253.31033.133" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="f1016c69-5c1a-40be-9300-068ee36f04d3" name="Changes" comment="" />
+      <created>1775627127360</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1775627127360</updated>
+      <workItem from="1775627128392" duration="3642000" />
+      <workItem from="1775707751332" duration="258000" />
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+  <component name="github-copilot-workspace">
+    <instructionFileLocations>
+      <option value=".github/instructions" />
+    </instructionFileLocations>
+    <promptFileLocations>
+      <option value=".github/prompts" />
+    </promptFileLocations>
+  </component>
+</project>

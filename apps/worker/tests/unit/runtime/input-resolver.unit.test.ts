@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AgentNode } from "@personal-agent-os/shared";
-import { ExecutionState } from "./execution-state.js";
-import { resolveInputs } from "./input-resolver.js";
+import { ExecutionState } from "../../../src/runtime/execution-state.js";
+import { resolveInputs } from "../../../src/runtime/input-resolver.js";
 
 describe("resolveInputs", () => {
   it("resolves job inputs and nested upstream outputs", () => {

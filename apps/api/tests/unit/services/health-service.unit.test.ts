@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { InMemoryDatabase, PostgresDatabase } from "../db/database.js";
-import { createSeedTables } from "../db/seed.js";
-import { HealthService } from "./health-service.js";
+import { InMemoryDatabase, PostgresDatabase } from "../../../src/db/database.js";
+import { createSeedTables } from "../../../src/db/seed.js";
+import { HealthService } from "../../../src/services/health-service.js";
 
 describe("HealthService", () => {
   it("reports memory-backed readiness as healthy", async () => {

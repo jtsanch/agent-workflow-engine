@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AgentCatalogService } from "./agent-catalog.js";
+import { AgentCatalogService } from "../../../src/services/agent-catalog.js";
 
 describe("AgentCatalogService", () => {
   it("lists the seeded agent definitions", () => {

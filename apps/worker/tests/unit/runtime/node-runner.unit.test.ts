@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentNode } from "@personal-agent-os/shared";
-import { runNode } from "./node-runner.js";
+import { runNode } from "../../../src/runtime/node-runner.js";
 
 const context = {
   now: () => "2026-04-10T00:00:00.000Z",

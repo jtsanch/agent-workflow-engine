@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { CreateJobInput, UserContext } from "@personal-agent-os/shared";
-import { createSeedTables } from "../db/seed.js";
-import { InMemoryDatabase } from "../db/database.js";
+import { createSeedTables } from "../../../src/db/seed.js";
+import { InMemoryDatabase } from "../../../src/db/database.js";
 import {
   InMemoryAlertPreferenceRepository,
   InMemoryJobRepository,
   InMemoryJobScheduleRepository
-} from "../repositories/memory.js";
-import { AgentCatalogService } from "./agent-catalog.js";
-import { JobsService } from "./jobs-service.js";
+} from "../../../src/repositories/memory.js";
+import { AgentCatalogService } from "../../../src/services/agent-catalog.js";
+import { JobsService } from "../../../src/services/jobs-service.js";
 
 const userContext: UserContext = {
   userId: "user_test",

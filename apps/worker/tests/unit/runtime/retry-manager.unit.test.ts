@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AgentDAG, AgentNode, NodeFeedback } from "@personal-agent-os/shared";
-import { ExecutionState } from "./execution-state.js";
-import { applyFeedbackRetry, shouldRetry } from "./retry-manager.js";
+import { ExecutionState } from "../../../src/runtime/execution-state.js";
+import { applyFeedbackRetry, shouldRetry } from "../../../src/runtime/retry-manager.js";
 
 const retryingNode: AgentNode = {
   id: "reviewer",

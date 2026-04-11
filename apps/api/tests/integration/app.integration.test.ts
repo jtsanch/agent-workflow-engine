@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { buildApp } from "./app.js";
-import { createInMemoryAppContext } from "./test-utils/in-memory-context.js";
+import { buildApp } from "../../src/app.js";
+import { createInMemoryAppContext } from "../../src/test-utils/in-memory-context.js";
 
 describe("API integration", () => {
   let app: Awaited<ReturnType<typeof buildApp>> | undefined;

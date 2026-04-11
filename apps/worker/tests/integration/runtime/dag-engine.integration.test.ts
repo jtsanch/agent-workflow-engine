@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { dailyBriefing, weeklyGroceryPlanner } from "@personal-agent-os/agent-sdk";
-import { executeDAG } from "./dag-engine.js";
+import { executeDAG } from "../../../src/runtime/dag-engine.js";
 
 const context = {
   now: () => "2026-04-10T00:00:00.000Z",

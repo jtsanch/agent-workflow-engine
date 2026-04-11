@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { UserContext } from "@personal-agent-os/shared";
-import { createSeedTables } from "../db/seed.js";
-import { InMemoryDatabase } from "../db/database.js";
-import { InMemoryAlertPreferenceRepository, InMemoryJobRepository } from "../repositories/memory.js";
-import { AlertsService } from "./alerts-service.js";
+import { createSeedTables } from "../../../src/db/seed.js";
+import { InMemoryDatabase } from "../../../src/db/database.js";
+import { InMemoryAlertPreferenceRepository, InMemoryJobRepository } from "../../../src/repositories/memory.js";
+import { AlertsService } from "../../../src/services/alerts-service.js";
 
 const userContext: UserContext = {
   userId: "user_1",

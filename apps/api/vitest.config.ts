@@ -10,7 +10,8 @@ export default defineConfig({
       exclude: [
         "src/**/*.test.ts",
         "src/**/*.unit.test.ts",
-        "src/**/*.integration.test.ts"
+        "src/**/*.integration.test.ts",
+        "tests/**/*.ts"
       ],
       thresholds: {
         lines: 80,

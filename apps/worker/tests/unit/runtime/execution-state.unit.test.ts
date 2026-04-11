@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentDAG } from "@personal-agent-os/shared";
-import { ExecutionState } from "./execution-state.js";
+import { ExecutionState } from "../../../src/runtime/execution-state.js";
 
 describe("ExecutionState", () => {
   it("tracks job inputs, node outputs, retries, and completion", () => {

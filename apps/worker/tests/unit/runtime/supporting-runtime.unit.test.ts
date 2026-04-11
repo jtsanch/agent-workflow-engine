@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { AgentDefinition, Job } from "@personal-agent-os/shared";
 import { dailyBriefing } from "@personal-agent-os/agent-sdk";
-import { evaluateRun } from "./evaluator.js";
-import { updateMemory } from "./memory.js";
-import { planJob } from "./planner.js";
+import { evaluateRun } from "../../../src/runtime/evaluator.js";
+import { updateMemory } from "../../../src/runtime/memory.js";
+import { planJob } from "../../../src/runtime/planner.js";
 
 describe("supporting runtime helpers", () => {
   it("builds a plan from the agent definition and job", () => {

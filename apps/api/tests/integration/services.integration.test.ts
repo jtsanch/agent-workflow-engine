@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CreateJobInput, UserContext } from "@personal-agent-os/shared";
-import { createInMemoryAppContext } from "../test-utils/in-memory-context.js";
+import { createInMemoryAppContext } from "../../src/test-utils/in-memory-context.js";
 
 const userContext: UserContext = {
   userId: "user_test",

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Job } from "@personal-agent-os/shared";
-import { runJob } from "./job-runner.js";
+import { runJob } from "../../../src/runtime/job-runner.js";
 
 describe("runJob integration", () => {
   it("executes a DAG-backed job and returns evaluation, memory, and node telemetry", async () => {

@@ -9,11 +9,11 @@
     "dev": "tsx watch src/start.ts",
     "migrate": "tsx src/db/migrate.ts",
     "test": "vitest run",
-    "test:unit": "vitest run src/**/*.unit.test.ts",
-    "test:integration": "vitest run src/**/*.integration.test.ts",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
     "test:coverage": "vitest run --coverage",
-    "lint": "tsc -p tsconfig.json --noEmit",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.tests.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.tests.json --noEmit",
     "format": "echo 'no-op'"
   },
   "dependencies": {

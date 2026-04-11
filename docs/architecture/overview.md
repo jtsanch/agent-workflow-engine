@@ -12,6 +12,8 @@ The current architecture is intentionally simple:
 
 The system is designed to look like a small, readable workflow platform with room for future orchestration upgrades such as Step Functions.
 
+For diagram views of the same architecture, see [diagrams.md](/Users/travis/projects/agent-platform/docs/architecture/diagrams.md).
+
 ## Runtime Topology
 
 - Web is hosted from S3 behind CloudFront
@@ -339,4 +341,3 @@ This keeps the MVP easy to reason about and deploy. Future upgrades may include:
 - add DAG editor UI
 - wire real search, calendar, email, and IoT tools
 - add Step Functions integration when orchestration durability becomes a requirement
-

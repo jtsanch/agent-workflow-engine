@@ -47,7 +47,13 @@ export const weeklyGroceryPlanner = defineAgent({
             ],
             defaultValue: "balanced"
           },
-          { name: "notes", label: "Notes", type: "textarea", placeholder: "Exclude peanuts, prefer fast dinners..." }
+          {
+            name: "notes",
+            label: "Notes",
+            type: "textarea",
+            required: false,
+            placeholder: "Exclude peanuts, prefer fast dinners..."
+          }
         ]
       }
     ]
@@ -203,9 +209,27 @@ export const dailyBriefing = defineAgent({
       {
         title: "Scope",
         fields: [
-          { name: "includeCalendar", label: "Include Calendar", type: "boolean", defaultValue: true },
-          { name: "includeTodos", label: "Include Todo Summary", type: "boolean", defaultValue: true },
-          { name: "focusArea", label: "Focus Area", type: "text", placeholder: "Roadmap, hiring, health..." }
+          {
+            name: "includeCalendar",
+            label: "Include Calendar",
+            type: "boolean",
+            required: false,
+            defaultValue: true
+          },
+          {
+            name: "includeTodos",
+            label: "Include Todo Summary",
+            type: "boolean",
+            required: false,
+            defaultValue: true
+          },
+          {
+            name: "focusArea",
+            label: "Focus Area",
+            type: "text",
+            required: false,
+            placeholder: "Roadmap, hiring, health..."
+          }
         ]
       }
     ]
@@ -275,4 +299,3 @@ export const dailyBriefing = defineAgent({
 });
 
 export const seedAgentDefinitions: AgentDefinition[] = [weeklyGroceryPlanner, dailyBriefing];
-

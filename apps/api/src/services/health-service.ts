@@ -1,4 +1,4 @@
-import type { DatabaseAdapter } from "../db/database.js";
+import { PostgresDatabase, type DatabaseAdapter } from "../db/database.js";
 
 export interface ReadinessStatus {
   ok: boolean;
@@ -21,7 +21,7 @@ export class HealthService {
     }
 
     try {
-      await this.database.pool.query("select 1");
+      await (this.database as PostgresDatabase).pool.query("select 1");
       return {
         ok: true,
         checks: {
@@ -38,4 +38,3 @@ export class HealthService {
     }
   }
 }
-

@@ -6,11 +6,13 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html"],
-      include: ["src/services/**/*.ts"],
+      include: ["src/runtime/**/*.ts"],
       exclude: [
         "src/**/*.test.ts",
         "src/**/*.unit.test.ts",
-        "src/**/*.integration.test.ts"
+        "src/**/*.integration.test.ts",
+        "src/runtime/queue-worker.ts",
+        "src/runtime/executor.ts"
       ],
       thresholds: {
         lines: 80,

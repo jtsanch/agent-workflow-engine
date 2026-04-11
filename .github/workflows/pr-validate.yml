@@ -1,0 +1,12 @@
+name: PR Validate
+
+on:
+  pull_request:
+    branches:
+      - develop
+
+jobs:
+  validate-services:
+    uses: ./.github/workflows/_ci-services.yml
+    with:
+      enforce_coverage: true

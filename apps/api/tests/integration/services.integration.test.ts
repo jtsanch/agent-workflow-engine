@@ -8,15 +8,17 @@ const userContext: UserContext = {
 };
 
 const createJobInput: CreateJobInput = {
-  agentDefinitionKey: "daily-briefing",
-  dagId: "dag-daily-briefing",
-  name: "Founder Daily Briefing",
-  scheduleExpression: "cron(0 7 ? * MON-FRI *)",
+  agentDefinitionKey: "weekly-grocery-planner",
+  dagId: "dag-weekly-grocery-planner",
+  name: "Weekly Grocery",
+  scheduleExpression: "cron(0 9 ? * SUN *)",
   timezone: "America/Los_Angeles",
   inputs: {
+    zipcode: "94107",
+    householdSize: 2,
+    budget: 100,
     email: "test@example.com",
-    tone: "concise",
-    includeTodos: true
+    dietStyle: "balanced"
   },
   alertPreferences: [
     {

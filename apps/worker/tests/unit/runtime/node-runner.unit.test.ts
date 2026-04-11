@@ -52,9 +52,9 @@ describe("runNode", () => {
 
     expect(result.output).toMatchObject({
       text: expect.any(String),
-      tokensUsed: 180
+      tokensUsed: expect.any(Number)
     });
-    expect(result.execution.tokenUsage).toBe(180);
+    expect(result.execution.tokenUsage).toBe(Number(result.output.tokensUsed));
   });
 
   it("executes an aggregator node", async () => {

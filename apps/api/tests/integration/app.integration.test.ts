@@ -29,21 +29,23 @@ describe("API integration", () => {
 
     const agentsResponse = await app.inject({ method: "GET", url: "/agents" });
     expect(agentsResponse.statusCode).toBe(200);
-    expect(agentsResponse.json().items.length).toBeGreaterThanOrEqual(2);
+    expect(agentsResponse.json().items).toHaveLength(1);
 
     const createJobResponse = await app.inject({
       method: "POST",
       url: "/jobs",
       payload: {
-        agentDefinitionKey: "daily-briefing",
-        dagId: "dag-daily-briefing",
-        name: "Founder Daily Briefing",
-        scheduleExpression: "cron(0 7 ? * MON-FRI *)",
+        agentDefinitionKey: "weekly-grocery-planner",
+        dagId: "dag-weekly-grocery-planner",
+        name: "Weekly Grocery",
+        scheduleExpression: "cron(0 9 ? * SUN *)",
         timezone: "America/Los_Angeles",
         inputs: {
+          zipcode: "94107",
+          householdSize: 2,
+          budget: 100,
           email: "demo@example.com",
-          tone: "concise",
-          includeTodos: true
+          dietStyle: "balanced"
         },
         alertPreferences: [
           {
@@ -85,7 +87,7 @@ describe("API integration", () => {
       method: "POST",
       url: "/jobs",
       payload: {
-        agentDefinitionKey: "daily-briefing"
+        agentDefinitionKey: "weekly-grocery-planner"
       }
     });
 

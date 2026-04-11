@@ -1,10 +1,19 @@
 import type { AgentDefinition } from "@personal-agent-os/shared";
 
+export interface LlmBudget {
+  maxTokens: number;
+  warningThreshold: number;
+  consumedTokens: number;
+  warningLogged: boolean;
+}
+
 export interface ExecutionContext {
   now: () => string;
   logger: {
     info(message: string, context?: Record<string, unknown>): void;
+    warn?(message: string, context?: Record<string, unknown>): void;
   };
+  llmBudget?: LlmBudget;
 }
 
 export interface ToolDefinition<
@@ -19,4 +28,3 @@ export interface ToolDefinition<
 export function defineAgent(agentDefinition: AgentDefinition): AgentDefinition {
   return agentDefinition;
 }
-

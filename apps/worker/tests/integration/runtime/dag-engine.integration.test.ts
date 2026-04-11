@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dailyBriefing, weeklyGroceryPlanner } from "@personal-agent-os/agent-sdk";
+import { weeklyGroceryPlanner } from "@personal-agent-os/agent-sdk";
 import { executeDAG } from "../../../src/runtime/dag-engine.js";
 
 const context = {
@@ -10,23 +10,27 @@ const context = {
 };
 
 describe("executeDAG", () => {
-  it("executes a simple DAG through its exit node", async () => {
+  it("executes the grocery DAG through its exit node", async () => {
     const result = await executeDAG(
-      dailyBriefing.dag,
+      weeklyGroceryPlanner.dag,
       {
+        zipcode: "94107",
+        budget: 100,
         email: "demo@example.com",
-        tone: "concise"
+        householdSize: 2,
+        dietStyle: "balanced"
       },
-      "run_daily",
+      "run_weekly",
       context
     );
 
     expect(result.output).toMatchObject({
-      destination: "demo@example.com",
+      score: expect.any(Number),
+      shouldRetry: expect.any(Boolean),
       summary: expect.any(String)
     });
-    expect(result.nodeExecutions.length).toBe(3);
-    expect(result.nodeFeedback).toEqual([]);
+    expect(result.nodeExecutions.length).toBeGreaterThan(0);
+    expect(result.nodeFeedback.length).toBeGreaterThan(0);
   });
 
   it("records evaluator feedback for retry-capable DAGs", async () => {

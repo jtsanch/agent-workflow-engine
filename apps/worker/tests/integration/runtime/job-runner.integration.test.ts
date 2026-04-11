@@ -5,16 +5,17 @@ import { runJob } from "../../../src/runtime/job-runner.js";
 describe("runJob integration", () => {
   it("executes a DAG-backed job and returns evaluation, memory, and node telemetry", async () => {
     const job: Job = {
-      id: "job_daily_briefing",
+      id: "job_weekly_grocery",
       userId: "user_test",
-      name: "Founder Daily Briefing",
-      dagId: "dag-daily-briefing",
-      agentDefinitionKey: "daily-briefing",
+      name: "Weekly Grocery",
+      dagId: "dag-weekly-grocery-planner",
+      agentDefinitionKey: "weekly-grocery-planner",
       status: "active",
       inputs: {
+        zipcode: "94107",
+        budget: 100,
         email: "demo@example.com",
-        tone: "concise",
-        includeTodos: true
+        householdSize: 2
       },
       createdAt: "2026-04-10T00:00:00.000Z",
       updatedAt: "2026-04-10T00:00:00.000Z"
@@ -23,8 +24,9 @@ describe("runJob integration", () => {
     const execution = await runJob(job);
 
     expect(execution.result.output).toMatchObject({
-      summary: expect.any(String),
-      destination: "demo@example.com"
+      score: expect.any(Number),
+      shouldRetry: expect.any(Boolean),
+      summary: expect.any(String)
     });
     expect(execution.evaluation).toMatchObject({
       score: expect.any(Number),
@@ -35,7 +37,7 @@ describe("runJob integration", () => {
       key: "latest-output"
     });
     expect(execution.nodeExecutions.length).toBeGreaterThan(0);
-    expect(execution.nodeFeedback).toEqual([]);
+    expect(execution.nodeFeedback.length).toBeGreaterThan(0);
   });
 
   it("fails fast when the job references an unknown workflow", async () => {

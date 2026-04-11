@@ -16,15 +16,17 @@ const userContext: UserContext = {
 };
 
 const createJobInput: CreateJobInput = {
-  agentDefinitionKey: "daily-briefing",
-  name: "My Daily Briefing",
-  scheduleExpression: "cron(0 7 ? * MON-FRI *)",
+  agentDefinitionKey: "weekly-grocery-planner",
+  name: "Weekly Grocery",
+  scheduleExpression: "cron(0 9 ? * SUN *)",
   timezone: "America/Los_Angeles",
-  dagId: "dag-daily-briefing",
+  dagId: "dag-weekly-grocery-planner",
   inputs: {
+    zipcode: "94107",
+    householdSize: 2,
+    budget: 100,
     email: "test@example.com",
-    tone: "concise",
-    includeTodos: true
+    dietStyle: "balanced"
   },
   alertPreferences: [
     {
@@ -49,11 +51,11 @@ describe("JobsService", () => {
     const job = await jobsService.createJob(createJobInput, userContext);
     const jobs = await jobsService.listJobs(userContext);
 
-    expect(job.agentDefinitionKey).toBe("daily-briefing");
+    expect(job.agentDefinitionKey).toBe("weekly-grocery-planner");
     expect(jobs).toHaveLength(1);
     expect(jobs[0]?.schedule?.scheduleExpression).toBe(createJobInput.scheduleExpression);
     expect(jobs[0]?.alertPreferences).toHaveLength(1);
-    expect(jobs[0]?.inputs.email).toBe("test@example.com");
+    expect(jobs[0]?.inputs.zipcode).toBe("94107");
   });
 
   it("throws when the agent definition key is unknown", async () => {

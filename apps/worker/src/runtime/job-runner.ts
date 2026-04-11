@@ -1,4 +1,4 @@
-import { seedAgentDefinitions } from "@personal-agent-os/agent-sdk";
+import { createLlmBudget, seedAgentDefinitions, type ExecutionContext } from "@personal-agent-os/agent-sdk";
 import type { Job } from "@personal-agent-os/shared";
 import { evaluateRun } from "./evaluator.js";
 import { updateMemory } from "./memory.js";
@@ -15,9 +15,15 @@ export async function runJob(job: Job) {
     throw new Error(`Unknown agent definition for dag: ${job.dagId}`);
   }
 
+  const context: ExecutionContext = {
+    now: () => new Date().toISOString(),
+    logger: { info: () => undefined },
+    llmBudget: createLlmBudget()
+  };
+
   if (!job.dagId) {
     const plan = planJob(agentDefinition, job);
-    const result = await executePlan(agentDefinition, job, createToolRegistry());
+    const result = await executePlan(agentDefinition, job, createToolRegistry(), context);
     const evaluation = evaluateRun(result.output);
     const memory = updateMemory(job.id, result.output);
 
@@ -35,10 +41,7 @@ export async function runJob(job: Job) {
     agentDefinition.dag,
     job.inputs,
     `run_${job.id}`,
-    {
-      now: () => new Date().toISOString(),
-      logger: { info: () => undefined }
-    }
+    context
   );
   const evaluation = evaluateRun(result.output);
   const memory = updateMemory(job.id, result.output);

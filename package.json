@@ -7,6 +7,15 @@
     "build": "turbo run build",
     "dev": "turbo run dev --parallel",
     "lint": "turbo run lint",
+    "lint:services": "turbo run lint --filter=@personal-agent-os/api --filter=@personal-agent-os/worker",
+    "test": "turbo run test",
+    "test:unit": "turbo run test:unit",
+    "test:integration": "turbo run test:integration",
+    "test:coverage": "turbo run test:coverage",
+    "test:services": "turbo run test --filter=@personal-agent-os/api --filter=@personal-agent-os/worker",
+    "test:unit:services": "turbo run test:unit --filter=@personal-agent-os/api --filter=@personal-agent-os/worker",
+    "test:integration:services": "turbo run test:integration --filter=@personal-agent-os/api --filter=@personal-agent-os/worker",
+    "test:coverage:services": "turbo run test:coverage --filter=@personal-agent-os/api --filter=@personal-agent-os/worker",
     "typecheck": "turbo run typecheck",
     "format": "turbo run format"
   },
@@ -16,4 +25,3 @@
     "typescript": "^5.8.0"
   }
 }
-

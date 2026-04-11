@@ -101,10 +101,23 @@ pnpm typecheck
 ### Run API tests
 
 ```bash
+pnpm lint:services
+pnpm test:unit:services
+pnpm test:integration:services
+pnpm test:coverage:services
+
+pnpm test
 pnpm --filter @personal-agent-os/api test
 pnpm --filter @personal-agent-os/api test:unit
 pnpm --filter @personal-agent-os/api test:integration
+pnpm --filter @personal-agent-os/api test:coverage
+pnpm --filter @personal-agent-os/worker test
+pnpm --filter @personal-agent-os/worker test:unit
+pnpm --filter @personal-agent-os/worker test:integration
+pnpm --filter @personal-agent-os/worker test:coverage
 ```
+
+Coverage for service CI is enforced through Vitest with the V8 provider and 80% thresholds for lines, functions, statements, and branches.
 
 ## Environment
 

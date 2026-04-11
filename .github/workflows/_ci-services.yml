@@ -1,0 +1,37 @@
+name: services-ci
+
+on:
+  workflow_call:
+    inputs:
+      enforce_coverage:
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  services-ci:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install deps
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Lint Services
+        run: pnpm run lint:services
+
+      - name: Test Services
+        run: pnpm run ${{ inputs.enforce_coverage && 'test:coverage:services' || 'test:services' }}
+
+      - name: Build
+        run: pnpm run build

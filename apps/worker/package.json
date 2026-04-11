@@ -8,6 +8,10 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsx watch src/start.ts",
     "start": "node dist/start.js",
+    "test": "vitest run --environment node",
+    "test:unit": "vitest run --environment node src/**/*.unit.test.ts",
+    "test:integration": "vitest run --environment node src/**/*.integration.test.ts",
+    "test:coverage": "vitest run --coverage --environment node",
     "lint": "tsc -p tsconfig.json --noEmit",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "format": "echo 'no-op'"
@@ -21,6 +25,8 @@
   },
   "devDependencies": {
     "@types/pg": "^8.11.10",
-    "tsx": "^4.19.0"
+    "@vitest/coverage-v8": "^3.2.4",
+    "tsx": "^4.19.0",
+    "vitest": "^3.2.4"
   }
 }

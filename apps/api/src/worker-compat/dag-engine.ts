@@ -1,24 +1,29 @@
-import type { AgentDAG, AgentNode, NodeExecution, NodeFeedback } from "@personal-agent-os/shared";
+import type { AgentDAG, EvaluationResult, NodeExecution, NodeFeedback } from "@personal-agent-os/shared";
 import type { ExecutionContext, ToolRegistry } from "@personal-agent-os/agent-sdk";
+
+function createId(prefix: string): string {
+  return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
+}
 
 function getNodeOutput(outputs: Map<string, Record<string, unknown>>, path: string): unknown {
   const [nodeId, ...rest] = path.split(".");
   const base = outputs.get(nodeId) ?? {};
-  return rest.reduce<unknown>((current, segment) => {
+  return rest.reduce((current: unknown, segment: string) => {
     if (!current || typeof current !== "object" || Array.isArray(current)) {
       return undefined;
     }
+
     return (current as Record<string, unknown>)[segment];
   }, base);
 }
 
 function resolveNodeInput(
-  node: AgentNode,
+  inputMapping: Record<string, string>,
   jobInputs: Record<string, unknown>,
   outputs: Map<string, Record<string, unknown>>
 ): Record<string, unknown> {
   return Object.fromEntries(
-    Object.entries(node.inputMapping).map(([key, source]) => {
+    Object.entries(inputMapping).map(([key, source]) => {
       if (source.startsWith("$job.")) {
         return [key, jobInputs[source.slice(5)]];
       }
@@ -26,6 +31,33 @@ function resolveNodeInput(
       return [key, getNodeOutput(outputs, source)];
     })
   );
+}
+
+function renderTemplate(template: string, input: Record<string, unknown>): string {
+  return template.replace(/{{\s*([\w.]+)\s*}}/g, (_match, path) => {
+    const value = path.split(".").reduce((current: unknown, segment: string) => {
+      if (!current || typeof current !== "object" || Array.isArray(current)) {
+        return undefined;
+      }
+
+      return (current as Record<string, unknown>)[segment];
+    }, input);
+
+    return typeof value === "string" ? value : JSON.stringify(value ?? null, null, 2);
+  });
+}
+
+function createFeedback(nodeId: string, result: EvaluationResult, context: ExecutionContext): NodeFeedback {
+  return {
+    id: createId("feedback"),
+    nodeExecutionId: "",
+    sourceNodeId: nodeId,
+    targetNodeId: "",
+    score: result.score,
+    shouldRetry: result.shouldRetry,
+    summary: result.issues.join("; ") || (result.passed ? "Output passed evaluator review." : "Evaluator reported issues."),
+    createdAt: context.now()
+  };
 }
 
 export async function executeDagCompat(
@@ -51,7 +83,7 @@ export async function executeDagCompat(
         return false;
       }
 
-      const incoming = dag.edges.filter((edge) => edge.type === "data" && edge.to === node.id);
+      const incoming = dag.edges.filter((edge) => (edge.type ?? "data") === "data" && edge.to === node.id);
       return incoming.every((edge) => completed.has(edge.from));
     });
 
@@ -61,53 +93,51 @@ export async function executeDagCompat(
 
     for (const node of runnable) {
       const startedAt = Date.now();
-      const input = resolveNodeInput(node, jobInputs, outputs);
+      const input = resolveNodeInput(node.inputMapping, jobInputs, outputs);
       let detail: Record<string, unknown>;
       let feedback: NodeFeedback | undefined;
 
-      if (node.type === "aggregator") {
-        detail = { ...input };
-      } else if (node.type === "evaluator") {
-        const candidate = String(input.candidate ?? input.summary ?? "");
-        const score = candidate.length > 40 ? 0.88 : 0.52;
-        const shouldRetry = score < 0.7;
-        detail = {
-          score,
-          shouldRetry,
-          summary: shouldRetry ? "Output needs one more refinement pass." : "Compatibility evaluator pass"
-        };
-        feedback = {
-          id: `feedback_${Math.random().toString(36).slice(2, 10)}`,
-          nodeExecutionId: "",
-          sourceNodeId: node.id,
-          targetNodeId: "",
-          score,
-          shouldRetry,
-          summary: String(detail.summary),
-          createdAt: context.now()
-        };
-      } else {
-        detail = await registry.execute(
-          node.agentKey,
-          node.type === "llm"
-            ? {
-                ...input,
-                prompt:
-                  typeof input.prompt === "string"
-                    ? input.prompt
-                    : `Generate output for ${node.name} using ${JSON.stringify(input)}`
-              }
-            : input,
-          context
-        );
+      switch (node.type) {
+        case "tool":
+          detail = node.execute ? await node.execute(input) : await registry.execute(node.tool, input, context);
+          break;
+        case "transform":
+          detail = node.transform(input) as Record<string, unknown>;
+          break;
+        case "llm": {
+          const llmResult = await registry.execute(
+            "llm.generateText",
+            {
+              prompt: renderTemplate(node.promptTemplate, input),
+              responseFormat: "json"
+            },
+            context
+          );
+          detail = typeof llmResult.text === "string" ? (JSON.parse(llmResult.text) as Record<string, unknown>) : {};
+          break;
+        }
+        case "evaluator": {
+          const llmResult = await registry.execute(
+            "llm.generateText",
+            {
+              prompt: renderTemplate(node.promptTemplate, input),
+              responseFormat: "json"
+            },
+            context
+          );
+          detail = typeof llmResult.text === "string" ? (JSON.parse(llmResult.text) as Record<string, unknown>) : {};
+          feedback = createFeedback(node.id, detail as unknown as EvaluationResult, context);
+          break;
+        }
       }
 
       outputs.set(node.id, detail);
       completed.add(node.id);
       steps.push({ name: node.id, detail });
+
       const completedAt = Date.now();
       const execution: NodeExecution = {
-        id: `nodeexec_${Math.random().toString(36).slice(2, 10)}`,
+        id: createId("nodeexec"),
         jobRunId: "",
         nodeId: node.id,
         nodeType: node.type,
@@ -120,6 +150,7 @@ export async function executeDagCompat(
         startedAt: new Date(startedAt).toISOString(),
         completedAt: new Date(completedAt).toISOString()
       };
+
       nodeExecutions.push(execution);
       if (feedback) {
         feedback.nodeExecutionId = execution.id;

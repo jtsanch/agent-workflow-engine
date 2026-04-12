@@ -100,6 +100,11 @@ export class InMemoryJobRunStepRepository implements JobRunStepRepository {
     return this.db.tables.runSteps.filter((step) => step.jobRunId === jobRunId);
   }
 
+  async listByRunIds(jobRunIds: string[]): Promise<JobRunStep[]> {
+    const runIdSet = new Set(jobRunIds);
+    return this.db.tables.runSteps.filter((step) => runIdSet.has(step.jobRunId));
+  }
+
   async createMany(steps: JobRunStep[]): Promise<JobRunStep[]> {
     this.db.tables.runSteps.push(...steps);
     return steps;
@@ -122,6 +127,11 @@ export class InMemoryNodeExecutionRepository implements NodeExecutionRepository 
     return this.db.tables.nodeExecutions.filter((execution) => execution.jobRunId === jobRunId);
   }
 
+  async listByRunIds(jobRunIds: string[]): Promise<NodeExecution[]> {
+    const runIdSet = new Set(jobRunIds);
+    return this.db.tables.nodeExecutions.filter((execution) => runIdSet.has(execution.jobRunId));
+  }
+
   async createMany(nodeExecutions: NodeExecution[]): Promise<NodeExecution[]> {
     this.db.tables.nodeExecutions.push(...nodeExecutions);
     return nodeExecutions;
@@ -138,6 +148,11 @@ export class InMemoryNodeFeedbackRepository implements NodeFeedbackRepository {
         .map((execution) => execution.id)
     );
     return this.db.tables.nodeFeedback.filter((feedback) => executionIds.has(feedback.nodeExecutionId));
+  }
+
+  async listByExecutionIds(nodeExecutionIds: string[]): Promise<NodeFeedback[]> {
+    const executionIdSet = new Set(nodeExecutionIds);
+    return this.db.tables.nodeFeedback.filter((feedback) => executionIdSet.has(feedback.nodeExecutionId));
   }
 
   async createMany(nodeFeedback: NodeFeedback[]): Promise<NodeFeedback[]> {

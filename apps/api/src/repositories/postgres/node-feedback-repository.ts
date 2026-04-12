@@ -31,6 +31,20 @@ export class PostgresNodeFeedbackRepository extends BaseRepository implements No
     });
   }
 
+  async listByExecutionIds(nodeExecutionIds: string[]): Promise<NodeFeedback[]> {
+    return this.exec("node_feedback.list_by_execution_ids", async () => {
+      if (nodeExecutionIds.length === 0) {
+        return [];
+      }
+
+      const rows = await this.db
+        .select()
+        .from(nodeFeedbackTable)
+        .where(inArray(nodeFeedbackTable.nodeExecutionId, nodeExecutionIds));
+      return rows.map((row: unknown) => mapNodeFeedback(row as Record<string, unknown>));
+    });
+  }
+
   async createMany(nodeFeedback: NodeFeedback[]): Promise<NodeFeedback[]> {
     return this.exec("node_feedback.create_many", async () => {
       if (nodeFeedback.length === 0) {

@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import type { JobRunStep } from "@personal-agent-os/shared";
 import type { PostgresDatabase } from "../../db/database.js";
 import { jobRunStepsTable } from "../../db/schema/index.js";
@@ -17,6 +17,21 @@ export class PostgresJobRunStepRepository extends BaseRepository implements JobR
         .select()
         .from(jobRunStepsTable)
         .where(eq(jobRunStepsTable.jobRunId, jobRunId))
+        .orderBy(asc(jobRunStepsTable.startedAt));
+      return rows.map((row: unknown) => mapJobRunStep(row as Record<string, unknown>));
+    });
+  }
+
+  async listByRunIds(jobRunIds: string[]): Promise<JobRunStep[]> {
+    return this.exec("job_run_steps.list_by_run_ids", async () => {
+      if (jobRunIds.length === 0) {
+        return [];
+      }
+
+      const rows = await this.db
+        .select()
+        .from(jobRunStepsTable)
+        .where(inArray(jobRunStepsTable.jobRunId, jobRunIds))
         .orderBy(asc(jobRunStepsTable.startedAt));
       return rows.map((row: unknown) => mapJobRunStep(row as Record<string, unknown>));
     });

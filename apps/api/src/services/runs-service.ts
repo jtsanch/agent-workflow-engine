@@ -29,15 +29,27 @@ export class RunsService {
 
   async listRuns(userContext: UserContext): Promise<Array<JobRun & { steps: JobRunStep[]; nodeExecutions: NodeExecution[]; nodeFeedback: NodeFeedback[] }>> {
     const runs = await this.jobRunRepository.listByUser(userContext.userId);
+    const runIds = runs.map((run) => run.id);
 
-    return Promise.all(
-      runs.map(async (run) => ({
-        ...run,
-        steps: await this.jobRunStepRepository.listByRunId(run.id),
-        nodeExecutions: await this.nodeExecutionRepository.listByRunId(run.id),
-        nodeFeedback: await this.nodeFeedbackRepository.listByRunId(run.id)
-      }))
+    const [steps, nodeExecutions] = await Promise.all([
+      this.jobRunStepRepository.listByRunIds(runIds),
+      this.nodeExecutionRepository.listByRunIds(runIds)
+    ]);
+    const nodeFeedback = await this.nodeFeedbackRepository.listByExecutionIds(
+      nodeExecutions.map((execution) => execution.id)
     );
+
+    const stepsByRunId = groupBy(steps, (step) => step.jobRunId);
+    const nodeExecutionsByRunId = groupBy(nodeExecutions, (execution) => execution.jobRunId);
+    const runIdByExecutionId = new Map(nodeExecutions.map((execution) => [execution.id, execution.jobRunId] as const));
+    const nodeFeedbackByRunId = groupBy(nodeFeedback, (feedback) => runIdByExecutionId.get(feedback.nodeExecutionId) ?? "");
+
+    return runs.map((run) => ({
+      ...run,
+      steps: stepsByRunId.get(run.id) ?? [],
+      nodeExecutions: nodeExecutionsByRunId.get(run.id) ?? [],
+      nodeFeedback: nodeFeedbackByRunId.get(run.id) ?? []
+    }));
   }
 
   async enqueueRun(jobId: string): Promise<JobRun> {
@@ -142,4 +154,19 @@ export class RunsService {
     await this.jobRunRepository.update(completedRun);
     return completedRun;
   }
+}
+
+function groupBy<T>(items: T[], keySelector: (item: T) => string): Map<string, T[]> {
+  const grouped = new Map<string, T[]>();
+
+  for (const item of items) {
+    const key = keySelector(item);
+    if (!key) {
+      continue;
+    }
+
+    grouped.set(key, [...(grouped.get(key) ?? []), item]);
+  }
+
+  return grouped;
 }

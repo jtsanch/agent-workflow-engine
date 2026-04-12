@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import type { NodeExecution } from "@personal-agent-os/shared";
 import type { PostgresDatabase } from "../../db/database.js";
 import { nodeExecutionsTable } from "../../db/schema/index.js";
@@ -17,6 +17,21 @@ export class PostgresNodeExecutionRepository extends BaseRepository implements N
         .select()
         .from(nodeExecutionsTable)
         .where(eq(nodeExecutionsTable.jobRunId, jobRunId))
+        .orderBy(asc(nodeExecutionsTable.startedAt));
+      return rows.map((row: unknown) => mapNodeExecution(row as Record<string, unknown>));
+    });
+  }
+
+  async listByRunIds(jobRunIds: string[]): Promise<NodeExecution[]> {
+    return this.exec("node_executions.list_by_run_ids", async () => {
+      if (jobRunIds.length === 0) {
+        return [];
+      }
+
+      const rows = await this.db
+        .select()
+        .from(nodeExecutionsTable)
+        .where(inArray(nodeExecutionsTable.jobRunId, jobRunIds))
         .orderBy(asc(nodeExecutionsTable.startedAt));
       return rows.map((row: unknown) => mapNodeExecution(row as Record<string, unknown>));
     });

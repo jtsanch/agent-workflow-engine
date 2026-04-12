@@ -1,10 +1,12 @@
 import { ToolRegistry, createLlmBudget, executeAgent } from "@personal-agent-os/agent-sdk";
-import type { JobRun, JobRunStep, ToolInvocation, UserContext } from "@personal-agent-os/shared";
+import type { JobRun, JobRunStep, NodeExecution, NodeFeedback, ToolInvocation, UserContext } from "@personal-agent-os/shared";
 import type {
   JobMemoryRepository,
   JobRepository,
   JobRunRepository,
   JobRunStepRepository,
+  NodeExecutionRepository,
+  NodeFeedbackRepository,
   ToolInvocationRepository
 } from "../repositories/interfaces.js";
 import { createId } from "../common/ids.js";
@@ -19,19 +21,35 @@ export class RunsService {
     private readonly jobRunRepository: JobRunRepository,
     private readonly jobRunStepRepository: JobRunStepRepository,
     private readonly toolInvocationRepository: ToolInvocationRepository,
+    private readonly nodeExecutionRepository: NodeExecutionRepository,
+    private readonly nodeFeedbackRepository: NodeFeedbackRepository,
     private readonly jobMemoryRepository: JobMemoryRepository,
     private readonly agentCatalogService: AgentCatalogService
   ) {}
 
-  async listRuns(userContext: UserContext): Promise<Array<JobRun & { steps: JobRunStep[] }>> {
+  async listRuns(userContext: UserContext): Promise<Array<JobRun & { steps: JobRunStep[]; nodeExecutions: NodeExecution[]; nodeFeedback: NodeFeedback[] }>> {
     const runs = await this.jobRunRepository.listByUser(userContext.userId);
+    const runIds = runs.map((run) => run.id);
 
-    return Promise.all(
-      runs.map(async (run) => ({
-        ...run,
-        steps: await this.jobRunStepRepository.listByRunId(run.id)
-      }))
+    const [steps, nodeExecutions] = await Promise.all([
+      this.jobRunStepRepository.listByRunIds(runIds),
+      this.nodeExecutionRepository.listByRunIds(runIds)
+    ]);
+    const nodeFeedback = await this.nodeFeedbackRepository.listByExecutionIds(
+      nodeExecutions.map((execution) => execution.id)
     );
+
+    const stepsByRunId = groupBy(steps, (step) => step.jobRunId);
+    const nodeExecutionsByRunId = groupBy(nodeExecutions, (execution) => execution.jobRunId);
+    const runIdByExecutionId = new Map(nodeExecutions.map((execution) => [execution.id, execution.jobRunId] as const));
+    const nodeFeedbackByRunId = groupBy(nodeFeedback, (feedback) => runIdByExecutionId.get(feedback.nodeExecutionId) ?? "");
+
+    return runs.map((run) => ({
+      ...run,
+      steps: stepsByRunId.get(run.id) ?? [],
+      nodeExecutions: nodeExecutionsByRunId.get(run.id) ?? [],
+      nodeFeedback: nodeFeedbackByRunId.get(run.id) ?? []
+    }));
   }
 
   async enqueueRun(jobId: string): Promise<JobRun> {
@@ -83,6 +101,10 @@ export class RunsService {
       job.dagId && agentDefinition.dag
         ? await executeDagCompat(agentDefinition.dag, job.inputs, registry, context)
         : await executeAgent(agentDefinition, job, context, registry);
+    const nodeExecutions: NodeExecution[] =
+      "nodeExecutions" in result && Array.isArray(result.nodeExecutions) ? result.nodeExecutions : [];
+    const nodeFeedback: NodeFeedback[] =
+      "nodeFeedback" in result && Array.isArray(result.nodeFeedback) ? result.nodeFeedback : [];
 
     const completedAt = new Date().toISOString();
     const steps: JobRunStep[] = result.steps.map((step) => ({
@@ -107,6 +129,13 @@ export class RunsService {
 
     await this.jobRunStepRepository.createMany(steps);
     await this.toolInvocationRepository.createMany(invocations);
+    await this.nodeExecutionRepository.createMany(
+      nodeExecutions.map((execution: NodeExecution) => ({
+        ...execution,
+        jobRunId: run.id
+      }))
+    );
+    await this.nodeFeedbackRepository.createMany(nodeFeedback);
     await this.jobMemoryRepository.upsert({
       id: createId("memory"),
       jobId: job.id,
@@ -125,4 +154,19 @@ export class RunsService {
     await this.jobRunRepository.update(completedRun);
     return completedRun;
   }
+}
+
+function groupBy<T>(items: T[], keySelector: (item: T) => string): Map<string, T[]> {
+  const grouped = new Map<string, T[]>();
+
+  for (const item of items) {
+    const key = keySelector(item);
+    if (!key) {
+      continue;
+    }
+
+    grouped.set(key, [...(grouped.get(key) ?? []), item]);
+  }
+
+  return grouped;
 }

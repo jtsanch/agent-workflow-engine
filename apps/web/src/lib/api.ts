@@ -1,4 +1,4 @@
-import type { AgentDefinition, Job, JobRun } from "@personal-agent-os/shared";
+import type { AgentDefinition, Job, JobRun, NodeExecution, NodeFeedback } from "@personal-agent-os/shared";
 
 const apiBaseUrl = "http://localhost:4000";
 
@@ -24,7 +24,7 @@ export async function createJob(input: Record<string, unknown>): Promise<Job> {
   return payload.item;
 }
 
-export async function listRuns(): Promise<Array<JobRun & { steps: Array<{ name: string; status: string }> }>> {
+export async function listRuns(): Promise<Array<JobRun & { steps: Array<{ name: string; status: string; detail?: Record<string, unknown> }>; nodeExecutions: NodeExecution[]; nodeFeedback: NodeFeedback[] }>> {
   const response = await fetch(`${apiBaseUrl}/runs`);
   const payload = await response.json();
   return payload.items;

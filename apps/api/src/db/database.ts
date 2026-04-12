@@ -8,6 +8,8 @@ import type {
   JobRun,
   JobRunStep,
   JobSchedule,
+  NodeExecution,
+  NodeFeedback,
   ToolInvocation
 } from "@personal-agent-os/shared";
 
@@ -18,6 +20,8 @@ export interface DatabaseTables {
   runs: JobRun[];
   runSteps: JobRunStep[];
   toolInvocations: ToolInvocation[];
+  nodeExecutions: NodeExecution[];
+  nodeFeedback: NodeFeedback[];
   memories: JobMemory[];
   feedbackEvents: FeedbackEvent[];
 }

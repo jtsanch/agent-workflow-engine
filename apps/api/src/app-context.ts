@@ -10,6 +10,8 @@ import {
   InMemoryJobRunRepository,
   InMemoryJobRunStepRepository,
   InMemoryJobScheduleRepository,
+  InMemoryNodeExecutionRepository,
+  InMemoryNodeFeedbackRepository,
   InMemoryToolInvocationRepository
 } from "./repositories/memory.js";
 import {
@@ -20,6 +22,8 @@ import {
   PostgresJobRunRepository,
   PostgresJobRunStepRepository,
   PostgresJobScheduleRepository,
+  PostgresNodeExecutionRepository,
+  PostgresNodeFeedbackRepository,
   PostgresToolInvocationRepository
 } from "./repositories/postgres/index.js";
 import { AgentCatalogService } from "./services/agent-catalog.js";
@@ -69,6 +73,14 @@ export function createAppContext(config: AppConfig): AppContext {
     database.kind === "postgres"
       ? new PostgresToolInvocationRepository(database)
       : new InMemoryToolInvocationRepository(database);
+  const nodeExecutionRepository =
+    database.kind === "postgres"
+      ? new PostgresNodeExecutionRepository(database)
+      : new InMemoryNodeExecutionRepository(database);
+  const nodeFeedbackRepository =
+    database.kind === "postgres"
+      ? new PostgresNodeFeedbackRepository(database)
+      : new InMemoryNodeFeedbackRepository(database);
   const jobMemoryRepository =
     database.kind === "postgres"
       ? new PostgresJobMemoryRepository(database)
@@ -90,6 +102,8 @@ export function createAppContext(config: AppConfig): AppContext {
     jobRunRepository,
     jobRunStepRepository,
     toolInvocationRepository,
+    nodeExecutionRepository,
+    nodeFeedbackRepository,
     jobMemoryRepository,
     agentCatalogService
   );

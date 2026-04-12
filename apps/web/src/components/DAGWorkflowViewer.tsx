@@ -62,6 +62,7 @@ function getStatusClass(status?: WorkflowNode["status"]): string {
 function buildGraphMetadata(nodes: WorkflowNode[], edges: WorkflowEdge[]): {
   levels: WorkflowNode[][];
   childrenById: Map<string, string[]>;
+  rootIds: string[];
   indegree: Map<string, number>;
 } {
   const nodeById = new Map(nodes.map((node) => [node.id, node] as const));
@@ -79,6 +80,7 @@ function buildGraphMetadata(nodes: WorkflowNode[], edges: WorkflowEdge[]): {
   }
 
   const rootIds = nodes.filter((node) => (indegree.get(node.id) ?? 0) === 0).map((node) => node.id);
+  const workingIndegree = new Map(indegree);
   const queue = [...rootIds];
   const levelById = new Map<string, number>(rootIds.map((id) => [id, 0]));
 
@@ -95,8 +97,8 @@ function buildGraphMetadata(nodes: WorkflowNode[], edges: WorkflowEdge[]): {
         levelById.set(childId, nextLevel);
       }
 
-      indegree.set(childId, (indegree.get(childId) ?? 1) - 1);
-      if ((indegree.get(childId) ?? 0) <= 0) {
+      workingIndegree.set(childId, (workingIndegree.get(childId) ?? 1) - 1);
+      if ((workingIndegree.get(childId) ?? 0) <= 0) {
         queue.push(childId);
       }
     }
@@ -115,6 +117,7 @@ function buildGraphMetadata(nodes: WorkflowNode[], edges: WorkflowEdge[]): {
       .sort((a, b) => a[0] - b[0])
       .map(([, levelNodes]) => levelNodes),
     childrenById,
+    rootIds,
     indegree
   };
 }
@@ -179,11 +182,10 @@ function isShortcutEdge(edge: WorkflowEdge, childrenById: Map<string, string[]>)
 function buildRowAssignments(
   nodes: WorkflowNode[],
   childrenById: Map<string, string[]>,
-  indegree: Map<string, number>
+  rootIds: string[]
 ): Map<string, number> {
   const rowById = new Map<string, number>();
-  const roots = nodes.filter((node) => (indegree.get(node.id) ?? 0) === 0).map((node) => node.id);
-  const rootId = roots[0];
+  const rootId = rootIds[0] ?? nodes[0]?.id;
   if (!rootId) {
     return rowById;
   }
@@ -244,8 +246,8 @@ export function DAGWorkflowViewer({
   showHeader = true
 }: DAGWorkflowViewerProps) {
   const { positionedNodes, width, height } = useMemo(() => {
-    const { levels, childrenById, indegree } = buildGraphMetadata(nodes, edges);
-    const rowById = buildRowAssignments(nodes, childrenById, indegree);
+    const { levels, childrenById, rootIds } = buildGraphMetadata(nodes, edges);
+    const rowById = buildRowAssignments(nodes, childrenById, rootIds);
     const positioned: PositionedNode[] = [];
     const maxRows = Math.max(...[...rowById.values()].map((value) => value + 1), 1);
     const rowHeights = Array.from({ length: maxRows }, (_, rowIndex) =>

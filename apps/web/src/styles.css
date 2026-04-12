@@ -171,6 +171,46 @@ button {
   gap: 16px;
 }
 
+.dag-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.dag-node {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  appearance: none;
+}
+
+.dag-node:hover {
+  border-color: rgba(140, 217, 173, 0.4);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.dag-node:focus-visible {
+  outline: 2px solid rgba(140, 217, 173, 0.8);
+  outline-offset: 2px;
+}
+
+.dag-node-active {
+  border-color: rgba(140, 217, 173, 0.75);
+  box-shadow: 0 0 0 1px rgba(140, 217, 173, 0.28) inset;
+}
+
+.dag-node p,
+.dag-node strong {
+  margin: 0;
+}
+
 .run-card {
   text-align: left;
   width: 100%;
@@ -458,10 +498,6 @@ button {
 @media (max-width: 900px) {
   .shell {
     grid-template-columns: 1fr;
-  }
-
-  .page-header {
-    flex-direction: column;
   }
 
   .detail-grid {

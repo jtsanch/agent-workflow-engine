@@ -1,5 +1,6 @@
+import "dotenv/config";
 import { createLogger, createMetrics } from "@personal-agent-os/observability";
-import { loadConfig } from "./config/env.js";
+import { loadConfig } from "./config/config.js";
 import { buildApp } from "./app.js";
 import { createAppContext } from "./app-context.js";
 
@@ -11,11 +12,11 @@ async function main() {
   const app = await buildApp(context);
 
   await app.listen({
-    port: config.PORT,
+    port: config.port,
     host: "0.0.0.0"
   });
 
-  logger.info("API listening", { port: config.PORT, driver: config.DB_DRIVER });
+  logger.info("API listening", { port: config.port, driver: config.dbDriver });
   metrics.increment("api.started");
 
   const shutdown = async (signal: string) => {

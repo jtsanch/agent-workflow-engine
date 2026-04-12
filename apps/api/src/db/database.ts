@@ -1,3 +1,4 @@
+import type { ApiDatabase } from "./client.js";
 import { Pool } from "pg";
 import type {
   AlertPreference,
@@ -34,6 +35,8 @@ export class InMemoryDatabase implements DatabaseAdapter {
 export class PostgresDatabase implements DatabaseAdapter {
   readonly kind = "postgres" as const;
 
-  constructor(readonly pool: Pool) {}
+  constructor(
+    readonly pool: Pool,
+    readonly db: ApiDatabase
+  ) {}
 }
-

@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "rootDir": ".",
+    "noEmit": true
+  },
+  "references": [
+    { "path": "../../packages/shared" },
+    { "path": "../../packages/agent-sdk" },
+    { "path": "../../packages/observability" }
+  ],
+  "include": ["src/**/*.ts", "tests/**/*.ts"]
+}

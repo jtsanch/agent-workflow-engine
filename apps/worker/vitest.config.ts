@@ -11,6 +11,7 @@ export default defineConfig({
         "src/**/*.test.ts",
         "src/**/*.unit.test.ts",
         "src/**/*.integration.test.ts",
+        "tests/**/*.ts",
         "src/runtime/queue-worker.ts",
         "src/runtime/executor.ts"
       ],

@@ -1,4 +1,4 @@
-import { ToolRegistry, executeAgent } from "@personal-agent-os/agent-sdk";
+import { ToolRegistry, createLlmBudget, executeAgent } from "@personal-agent-os/agent-sdk";
 import type { JobRun, JobRunStep, ToolInvocation, UserContext } from "@personal-agent-os/shared";
 import type {
   JobMemoryRepository,
@@ -75,7 +75,8 @@ export class RunsService {
 
     const context = {
       now: () => new Date().toISOString(),
-      logger: { info: () => undefined }
+      logger: { info: () => undefined },
+      llmBudget: createLlmBudget()
     };
     const registry = createDefaultToolRegistry() as ToolRegistry;
     const result =

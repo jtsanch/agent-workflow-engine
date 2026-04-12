@@ -43,6 +43,7 @@ async function claimNextQueuedRun(pool: Pool): Promise<{ runId: string; job: Job
     );
 
     const row = result.rows[0];
+
     if (!row) {
       await client.query("rollback");
       return null;

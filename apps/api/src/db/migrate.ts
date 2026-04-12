@@ -1,8 +1,9 @@
+import "dotenv/config";
 import { readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Pool } from "pg";
-import { loadConfig } from "../config/env.js";
+import { loadConfig } from "../config/config.js";
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url));
 const migrationsDirectory = join(currentDirectory, "migrations");
@@ -43,7 +44,7 @@ export async function runMigrations(databaseUrl: string): Promise<void> {
 
 async function main() {
   const config = loadConfig();
-  await runMigrations(config.DATABASE_URL);
+  await runMigrations(config.databaseUrl);
   console.log("Migrations complete");
 }
 

@@ -31,12 +31,14 @@ function createContext() {
 describe("LlmGenerateTextTool", () => {
   beforeEach(() => {
     delete process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_ENABLE_LIVE_TESTS;
     resetOpenAiClientForTests();
     vi.clearAllMocks();
   });
 
   afterEach(() => {
     delete process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_ENABLE_LIVE_TESTS;
   });
 
   it("returns a mock response when OPENAI_API_KEY is not configured", async () => {
@@ -53,6 +55,7 @@ describe("LlmGenerateTextTool", () => {
   it("calls OpenAI and retries transient failures when a key is configured", async () => {
     const context = createContext();
     process.env.OPENAI_API_KEY = "test-key";
+    process.env.OPENAI_ENABLE_LIVE_TESTS = "true";
     createCompletion
       .mockRejectedValueOnce({ status: 429 })
       .mockResolvedValueOnce({
@@ -84,6 +87,7 @@ describe("LlmGenerateTextTool", () => {
   it("logs when the budget warning threshold is crossed and throws when the cap is exceeded", async () => {
     const context = createContext();
     process.env.OPENAI_API_KEY = "test-key";
+    process.env.OPENAI_ENABLE_LIVE_TESTS = "true";
     context.llmBudget.warningThreshold = 50;
     context.llmBudget.maxTokens = 60;
 

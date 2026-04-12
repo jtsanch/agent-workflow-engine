@@ -17,7 +17,11 @@ export class LlmGenerateTextTool extends BaseTool {
     const temperature = typeof input.temperature === "number" ? input.temperature : 0.2;
     const maxTokens = typeof input.maxTokens === "number" ? input.maxTokens : DEFAULT_LLM_MAX_TOKENS_PER_CALL;
 
-    if (!process.env.OPENAI_API_KEY) {
+    const liveOpenAiEnabled =
+      process.env.OPENAI_API_KEY &&
+      (process.env.NODE_ENV !== "test" || process.env.OPENAI_ENABLE_LIVE_TESTS === "true");
+
+    if (!liveOpenAiEnabled) {
       context.logger.info("OPENAI_API_KEY not configured, returning mock LLM response", {
         toolName: this.name
       });

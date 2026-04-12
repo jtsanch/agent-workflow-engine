@@ -4,3 +4,7 @@ node_modules
 .turbo
 *.tsbuildinfo
 .idea/
+.env
+.env.local
+**/.env
+**/.env.local

@@ -39,9 +39,13 @@ describe("WebSearchTool", () => {
     } as never);
 
     const result = await new WebSearchTool().run({ query: "budget groceries" }, context);
+    const typedResult = result as {
+      query: string;
+      results: Array<{ title: string; url: string; snippet: string }>;
+    };
 
-    expect(result.query).toBe("budget groceries");
-    expect(result.results).toEqual([
+    expect(typedResult.query).toBe("budget groceries");
+    expect(typedResult.results).toEqual([
       {
         title: "Grocery planning",
         url: "https://example.com/overview",
@@ -74,8 +78,11 @@ describe("WebSearchTool", () => {
       } as never);
 
     const result = await new WebSearchTool().run({ query: "groceries" }, context);
+    const typedResult = result as {
+      results: Array<{ title: string; url: string; snippet: string }>;
+    };
 
     expect(mockedAxios.request).toHaveBeenCalledTimes(2);
-    expect(result.results[0]?.url).toBe("https://example.com/fallback");
+    expect(typedResult.results[0]?.url).toBe("https://example.com/fallback");
   });
 });

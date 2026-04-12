@@ -1,5 +1,5 @@
-import { Pool } from "pg";
-import type { AppConfig } from "./config/env.js";
+import type { AppConfig } from "./config/config.js";
+import { createPostgresClient } from "./db/client.js";
 import { createSeedTables } from "./db/seed.js";
 import { InMemoryDatabase, PostgresDatabase } from "./db/database.js";
 import {
@@ -21,7 +21,7 @@ import {
   PostgresJobRunStepRepository,
   PostgresJobScheduleRepository,
   PostgresToolInvocationRepository
-} from "./repositories/postgres.js";
+} from "./repositories/postgres/index.js";
 import { AgentCatalogService } from "./services/agent-catalog.js";
 import { AlertsService } from "./services/alerts-service.js";
 import { HealthService } from "./services/health-service.js";
@@ -42,8 +42,11 @@ export function createAppContext(config: AppConfig): AppContext {
   const agentCatalogService = new AgentCatalogService();
 
   const database =
-    config.DB_DRIVER === "postgres"
-      ? new PostgresDatabase(new Pool({ connectionString: config.DATABASE_URL }))
+    config.dbDriver === "postgres"
+      ? (() => {
+          const { pool, db } = createPostgresClient(config.databaseUrl);
+          return new PostgresDatabase(pool, db);
+        })()
       : new InMemoryDatabase(createSeedTables());
 
   const jobRepository =
@@ -107,4 +110,3 @@ export function createAppContext(config: AppConfig): AppContext {
     }
   };
 }
-

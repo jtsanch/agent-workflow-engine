@@ -1,28 +1,29 @@
+import "dotenv/config";
 import { Pool } from "pg";
 import { createLogger } from "@personal-agent-os/observability";
-import { loadWorkerConfig } from "./config/env.js";
+import { loadWorkerConfig } from "./config/config.js";
 import { processNextQueuedRun } from "./runtime/queue-worker.js";
 
 const logger = createLogger("worker");
 
 async function main() {
   const config = loadWorkerConfig();
-  if (config.DB_DRIVER !== "postgres") {
-    logger.warn("Worker queue processing expects postgres. Exiting.", { driver: config.DB_DRIVER });
+  if (config.dbDriver !== "postgres") {
+    logger.warn("Worker queue processing expects postgres. Exiting.", { driver: config.dbDriver });
     return;
   }
 
-  const pool = new Pool({ connectionString: config.DATABASE_URL });
+  const pool = new Pool({ connectionString: config.databaseUrl });
 
   logger.info("Worker polling loop started", {
-    intervalMs: config.JOB_POLL_INTERVAL_MS,
-    concurrency: config.WORKER_CONCURRENCY
+    intervalMs: config.jobPollIntervalMs,
+    concurrency: config.workerConcurrency
   });
 
   while (true) {
     const didWork = await processNextQueuedRun(pool);
     if (!didWork) {
-      await new Promise((resolve) => setTimeout(resolve, config.JOB_POLL_INTERVAL_MS));
+      await new Promise((resolve) => setTimeout(resolve, config.jobPollIntervalMs));
     }
   }
 }

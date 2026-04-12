@@ -19,7 +19,7 @@ describe("HealthService", () => {
     const service = new HealthService(
       new PostgresDatabase({
         query: async () => ({ rows: [] })
-      } as unknown as PostgresDatabase["pool"])
+      } as unknown as PostgresDatabase["pool"], {} as PostgresDatabase["db"])
     );
 
     await expect(service.getReadiness()).resolves.toEqual({
@@ -36,7 +36,7 @@ describe("HealthService", () => {
         query: async () => {
           throw new Error("db unavailable");
         }
-      } as unknown as PostgresDatabase["pool"])
+      } as unknown as PostgresDatabase["pool"], {} as PostgresDatabase["db"])
     );
 
     await expect(service.getReadiness()).resolves.toEqual({

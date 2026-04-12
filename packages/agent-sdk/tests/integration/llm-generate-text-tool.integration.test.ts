@@ -9,7 +9,7 @@ const context = {
 };
 
 describe("LlmGenerateTextTool integration", () => {
-  it("uses a mock response without OPENAI_API_KEY and a live response when the key is present", async () => {
+  it("uses a mock response unless local live OpenAI integration is explicitly enabled", async () => {
     const result = await new LlmGenerateTextTool().run(
       {
         prompt: 'Reply with a short grocery planning sentence and include the word "parsley".',
@@ -17,17 +17,25 @@ describe("LlmGenerateTextTool integration", () => {
       },
       context
     );
+    const typedResult = result as {
+      provider: string;
+      tokensUsed: number;
+      text: string;
+    };
 
-    if (!process.env.OPENAI_API_KEY) {
-      expect(result).toMatchObject({
+    const liveOpenAiEnabled =
+      process.env.OPENAI_API_KEY && process.env.OPENAI_ENABLE_LIVE_TESTS === "true";
+
+    if (!liveOpenAiEnabled) {
+      expect(typedResult).toMatchObject({
         provider: "mock",
         tokensUsed: 0
       });
       return;
     }
 
-    expect(result.provider).toBe("openai");
-    expect(typeof result.text).toBe("string");
-    expect(result.text.length).toBeGreaterThan(0);
+    expect(typedResult.provider).toBe("openai");
+    expect(typeof typedResult.text).toBe("string");
+    expect(typedResult.text.length).toBeGreaterThan(0);
   });
 });

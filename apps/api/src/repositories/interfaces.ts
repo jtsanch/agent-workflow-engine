@@ -6,6 +6,8 @@ import type {
   JobRun,
   JobRunStep,
   JobSchedule,
+  NodeExecution,
+  NodeFeedback,
   ToolInvocation
 } from "@personal-agent-os/shared";
 
@@ -39,6 +41,16 @@ export interface JobRunStepRepository {
 
 export interface ToolInvocationRepository {
   createMany(invocations: ToolInvocation[]): Promise<ToolInvocation[]>;
+}
+
+export interface NodeExecutionRepository {
+  listByRunId(jobRunId: string): Promise<NodeExecution[]>;
+  createMany(nodeExecutions: NodeExecution[]): Promise<NodeExecution[]>;
+}
+
+export interface NodeFeedbackRepository {
+  listByRunId(jobRunId: string): Promise<NodeFeedback[]>;
+  createMany(nodeFeedback: NodeFeedback[]): Promise<NodeFeedback[]>;
 }
 
 export interface JobMemoryRepository {

@@ -8,8 +8,9 @@ export function createSeedTables(): DatabaseTables {
     runs: [],
     runSteps: [],
     toolInvocations: [],
+    nodeExecutions: [],
+    nodeFeedback: [],
     memories: [],
     feedbackEvents: []
   };
 }
-

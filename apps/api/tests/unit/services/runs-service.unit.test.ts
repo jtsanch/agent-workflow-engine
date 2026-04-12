@@ -9,6 +9,8 @@ import {
   InMemoryJobRunRepository,
   InMemoryJobRunStepRepository,
   InMemoryJobScheduleRepository,
+  InMemoryNodeExecutionRepository,
+  InMemoryNodeFeedbackRepository,
   InMemoryToolInvocationRepository
 } from "../../../src/repositories/memory.js";
 import { AgentCatalogService } from "../../../src/services/agent-catalog.js";
@@ -61,6 +63,8 @@ describe("RunsService", () => {
       new InMemoryJobRunRepository(database),
       new InMemoryJobRunStepRepository(database),
       new InMemoryToolInvocationRepository(database),
+      new InMemoryNodeExecutionRepository(database),
+      new InMemoryNodeFeedbackRepository(database),
       new InMemoryJobMemoryRepository(database),
       agentCatalogService
     );
@@ -74,6 +78,7 @@ describe("RunsService", () => {
     expect(completedRun.output?.summary).toBeDefined();
     expect(runs).toHaveLength(2);
     expect(runs.some((run) => run.steps.length > 0)).toBe(true);
+    expect(runs.some((run) => run.nodeExecutions.length > 0)).toBe(true);
   });
 
   it("throws when enqueueing an unknown job", async () => {
@@ -83,6 +88,8 @@ describe("RunsService", () => {
       new InMemoryJobRunRepository(database),
       new InMemoryJobRunStepRepository(database),
       new InMemoryToolInvocationRepository(database),
+      new InMemoryNodeExecutionRepository(database),
+      new InMemoryNodeFeedbackRepository(database),
       new InMemoryJobMemoryRepository(database),
       new AgentCatalogService()
     );

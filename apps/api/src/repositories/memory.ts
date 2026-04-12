@@ -6,6 +6,8 @@ import type {
   JobRun,
   JobRunStep,
   JobSchedule,
+  NodeExecution,
+  NodeFeedback,
   ToolInvocation
 } from "@personal-agent-os/shared";
 import type { InMemoryDatabase } from "../db/database.js";
@@ -17,6 +19,8 @@ import type {
   JobRunRepository,
   JobRunStepRepository,
   JobScheduleRepository,
+  NodeExecutionRepository,
+  NodeFeedbackRepository,
   ToolInvocationRepository
 } from "./interfaces.js";
 
@@ -108,6 +112,37 @@ export class InMemoryToolInvocationRepository implements ToolInvocationRepositor
   async createMany(invocations: ToolInvocation[]): Promise<ToolInvocation[]> {
     this.db.tables.toolInvocations.push(...invocations);
     return invocations;
+  }
+}
+
+export class InMemoryNodeExecutionRepository implements NodeExecutionRepository {
+  constructor(private readonly db: InMemoryDatabase) {}
+
+  async listByRunId(jobRunId: string): Promise<NodeExecution[]> {
+    return this.db.tables.nodeExecutions.filter((execution) => execution.jobRunId === jobRunId);
+  }
+
+  async createMany(nodeExecutions: NodeExecution[]): Promise<NodeExecution[]> {
+    this.db.tables.nodeExecutions.push(...nodeExecutions);
+    return nodeExecutions;
+  }
+}
+
+export class InMemoryNodeFeedbackRepository implements NodeFeedbackRepository {
+  constructor(private readonly db: InMemoryDatabase) {}
+
+  async listByRunId(jobRunId: string): Promise<NodeFeedback[]> {
+    const executionIds = new Set(
+      this.db.tables.nodeExecutions
+        .filter((execution) => execution.jobRunId === jobRunId)
+        .map((execution) => execution.id)
+    );
+    return this.db.tables.nodeFeedback.filter((feedback) => executionIds.has(feedback.nodeExecutionId));
+  }
+
+  async createMany(nodeFeedback: NodeFeedback[]): Promise<NodeFeedback[]> {
+    this.db.tables.nodeFeedback.push(...nodeFeedback);
+    return nodeFeedback;
   }
 }
 

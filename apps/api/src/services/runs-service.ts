@@ -1,10 +1,12 @@
 import { ToolRegistry, createLlmBudget, executeAgent } from "@personal-agent-os/agent-sdk";
-import type { JobRun, JobRunStep, ToolInvocation, UserContext } from "@personal-agent-os/shared";
+import type { JobRun, JobRunStep, NodeExecution, NodeFeedback, ToolInvocation, UserContext } from "@personal-agent-os/shared";
 import type {
   JobMemoryRepository,
   JobRepository,
   JobRunRepository,
   JobRunStepRepository,
+  NodeExecutionRepository,
+  NodeFeedbackRepository,
   ToolInvocationRepository
 } from "../repositories/interfaces.js";
 import { createId } from "../common/ids.js";
@@ -19,17 +21,21 @@ export class RunsService {
     private readonly jobRunRepository: JobRunRepository,
     private readonly jobRunStepRepository: JobRunStepRepository,
     private readonly toolInvocationRepository: ToolInvocationRepository,
+    private readonly nodeExecutionRepository: NodeExecutionRepository,
+    private readonly nodeFeedbackRepository: NodeFeedbackRepository,
     private readonly jobMemoryRepository: JobMemoryRepository,
     private readonly agentCatalogService: AgentCatalogService
   ) {}
 
-  async listRuns(userContext: UserContext): Promise<Array<JobRun & { steps: JobRunStep[] }>> {
+  async listRuns(userContext: UserContext): Promise<Array<JobRun & { steps: JobRunStep[]; nodeExecutions: NodeExecution[]; nodeFeedback: NodeFeedback[] }>> {
     const runs = await this.jobRunRepository.listByUser(userContext.userId);
 
     return Promise.all(
       runs.map(async (run) => ({
         ...run,
-        steps: await this.jobRunStepRepository.listByRunId(run.id)
+        steps: await this.jobRunStepRepository.listByRunId(run.id),
+        nodeExecutions: await this.nodeExecutionRepository.listByRunId(run.id),
+        nodeFeedback: await this.nodeFeedbackRepository.listByRunId(run.id)
       }))
     );
   }
@@ -83,6 +89,10 @@ export class RunsService {
       job.dagId && agentDefinition.dag
         ? await executeDagCompat(agentDefinition.dag, job.inputs, registry, context)
         : await executeAgent(agentDefinition, job, context, registry);
+    const nodeExecutions: NodeExecution[] =
+      "nodeExecutions" in result && Array.isArray(result.nodeExecutions) ? result.nodeExecutions : [];
+    const nodeFeedback: NodeFeedback[] =
+      "nodeFeedback" in result && Array.isArray(result.nodeFeedback) ? result.nodeFeedback : [];
 
     const completedAt = new Date().toISOString();
     const steps: JobRunStep[] = result.steps.map((step) => ({
@@ -107,6 +117,13 @@ export class RunsService {
 
     await this.jobRunStepRepository.createMany(steps);
     await this.toolInvocationRepository.createMany(invocations);
+    await this.nodeExecutionRepository.createMany(
+      nodeExecutions.map((execution: NodeExecution) => ({
+        ...execution,
+        jobRunId: run.id
+      }))
+    );
+    await this.nodeFeedbackRepository.createMany(nodeFeedback);
     await this.jobMemoryRepository.upsert({
       id: createId("memory"),
       jobId: job.id,

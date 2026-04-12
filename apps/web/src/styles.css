@@ -27,6 +27,10 @@ textarea {
   font: inherit;
 }
 
+button {
+  color: inherit;
+}
+
 .shell {
   display: grid;
   grid-template-columns: 260px 1fr;
@@ -56,10 +60,26 @@ textarea {
 }
 
 .page-header {
-  display: flex;
-  justify-content: space-between;
-  gap: 24px;
+  display: grid;
+  gap: 8px;
   margin-bottom: 24px;
+}
+
+.page-header-copy {
+  display: grid;
+  gap: 6px;
+}
+
+.page-header-copy h2,
+.page-header-description {
+  margin: 0;
+}
+
+.page-header-description {
+  max-width: 720px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: rgba(233, 240, 234, 0.68);
 }
 
 .eyebrow {
@@ -72,6 +92,12 @@ textarea {
 .card-list {
   display: grid;
   gap: 16px;
+}
+
+.runs-stack {
+  display: grid;
+  gap: 18px;
+  align-items: start;
 }
 
 .card {
@@ -145,16 +171,284 @@ textarea {
   gap: 16px;
 }
 
-.dag-grid {
+.run-card {
+  text-align: left;
+  width: 100%;
+  cursor: pointer;
+}
+
+.run-card-active {
+  border-color: rgba(140, 217, 173, 0.75);
+  box-shadow: 0 0 0 1px rgba(140, 217, 173, 0.35) inset;
+}
+
+.run-shell {
   display: grid;
+  gap: 18px;
+  width: min(100%, 380px);
+  transition: width 180ms ease;
+}
+
+.run-shell-active {
+  border-color: rgba(140, 217, 173, 0.45);
+  box-shadow: 0 0 0 1px rgba(140, 217, 173, 0.2) inset;
+}
+
+.run-shell-dag-open {
+  width: 100%;
+}
+
+.run-shell-dag-open .run-shell-summary-main {
+  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+  align-items: start;
+}
+
+.run-shell-summary {
+  display: grid;
+  gap: 14px;
+}
+
+.run-shell-summary-main {
+  display: grid;
+  gap: 18px;
+}
+
+.run-shell-summary-copy {
+  display: grid;
+  gap: 14px;
+}
+
+.run-shell-topline {
+  align-items: flex-start;
+}
+
+.run-shell-title {
+  margin: 0;
+  text-transform: capitalize;
+  overflow-wrap: anywhere;
+}
+
+.run-shell-meta {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.run-shell-meta p,
+.run-shell-section-title {
+  margin: 0;
+}
+
+.run-shell-actions {
+  display: flex;
+  flex-wrap: wrap;
   gap: 12px;
 }
 
-.dag-node {
+.run-shell-flow {
+  width: 100%;
+  min-width: 0;
+  justify-self: end;
+}
+
+.ghost-button {
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+}
+
+.ghost-button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.ghost-button-compact {
+  padding: 8px 12px;
+}
+
+.workflow-viewer,
+.node-inspector {
+  display: grid;
+  gap: 16px;
+  width: 100%;
+}
+
+.workflow-graph-panel {
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.workflow-graph-scroll {
+  position: relative;
+  overflow: auto;
+  border-radius: 12px;
+  min-height: 260px;
+  max-height: 480px;
+  width: 100%;
+  background:
+    radial-gradient(circle at top left, rgba(140, 217, 173, 0.08), transparent 36%),
+    rgba(4, 10, 8, 0.35);
+}
+
+.workflow-edges {
+  position: absolute;
+  inset: 0;
+}
+
+.workflow-edge {
+  fill: none;
+  stroke: rgba(140, 217, 173, 0.5);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.workflow-node-layer {
+  position: relative;
+}
+
+.workflow-node {
+  position: absolute;
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  text-align: left;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(10, 22, 17, 0.9);
+  cursor: pointer;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+
+.workflow-node strong {
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.workflow-node-selected {
+  outline: 2px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 0 0 1px rgba(140, 217, 173, 0.45), 0 12px 28px rgba(0, 0, 0, 0.22);
+}
+
+.workflow-node-kind {
+  margin-top: auto;
+  justify-self: end;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  opacity: 0.58;
+  text-transform: lowercase;
+}
+
+.workflow-node-status {
+  width: fit-content;
+  margin-top: auto;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  text-transform: capitalize;
+  background: rgba(255, 255, 255, 0.08);
+  justify-self: start;
+  align-self: end;
+}
+
+.workflow-node-idle {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.workflow-node-running {
+  border-color: rgba(108, 183, 255, 0.8);
+  background: rgba(16, 37, 61, 0.92);
+}
+
+.workflow-node-success {
+  border-color: rgba(111, 223, 153, 0.8);
+  background: rgba(11, 42, 25, 0.92);
+}
+
+.workflow-node-error {
+  border-color: rgba(255, 118, 118, 0.8);
+  background: rgba(60, 18, 18, 0.92);
+}
+
+.workflow-status-idle {
+  background: rgba(160, 166, 176, 0.15);
+}
+
+.workflow-status-running {
+  background: rgba(108, 183, 255, 0.18);
+}
+
+.workflow-status-success {
+  background: rgba(111, 223, 153, 0.18);
+}
+
+.workflow-status-error {
+  background: rgba(255, 118, 118, 0.18);
+}
+
+.workflow-inspector {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.workflow-inspector-bottom {
+  margin-top: 20px;
+}
+
+.workflow-inspector-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.workflow-output-panel {
+  overflow: auto;
+  max-height: 420px;
+}
+
+.workflow-output-stack {
+  display: grid;
+  gap: 14px;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.detail-item,
+.detail-note {
   padding: 14px;
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.detail-item p,
+.detail-note p {
+  margin-bottom: 0;
+}
+
+.detail-note pre {
+  margin: 12px 0 0;
+  padding: 14px;
+  overflow: auto;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.24);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .muted {
@@ -168,5 +462,21 @@ textarea {
 
   .page-header {
     flex-direction: column;
+  }
+
+  .detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .run-shell-meta {
+    grid-template-columns: 1fr;
+  }
+
+  .run-shell {
+    width: 100%;
+  }
+
+  .run-shell-dag-open .run-shell-summary-main {
+    grid-template-columns: 1fr;
   }
 }

@@ -1,4 +1,4 @@
-import type { AgentDAG, AgentNode } from "@personal-agent-os/shared";
+import type { AgentDAG, AgentNode, NodeExecution, NodeFeedback } from "@personal-agent-os/shared";
 import type { ExecutionContext, ToolRegistry } from "@personal-agent-os/agent-sdk";
 
 function getNodeOutput(outputs: Map<string, Record<string, unknown>>, path: string): unknown {
@@ -36,10 +36,14 @@ export async function executeDagCompat(
 ): Promise<{
   output: Record<string, unknown>;
   steps: Array<{ name: string; detail: Record<string, unknown> }>;
+  nodeExecutions: NodeExecution[];
+  nodeFeedback: NodeFeedback[];
 }> {
   const outputs = new Map<string, Record<string, unknown>>();
   const completed = new Set<string>();
   const steps: Array<{ name: string; detail: Record<string, unknown> }> = [];
+  const nodeExecutions: NodeExecution[] = [];
+  const nodeFeedback: NodeFeedback[] = [];
 
   while (!completed.has(dag.exitNodeId)) {
     const runnable = dag.nodes.filter((node) => {
@@ -56,17 +60,31 @@ export async function executeDagCompat(
     }
 
     for (const node of runnable) {
+      const startedAt = Date.now();
       const input = resolveNodeInput(node, jobInputs, outputs);
       let detail: Record<string, unknown>;
+      let feedback: NodeFeedback | undefined;
 
       if (node.type === "aggregator") {
         detail = { ...input };
       } else if (node.type === "evaluator") {
         const candidate = String(input.candidate ?? input.summary ?? "");
+        const score = candidate.length > 40 ? 0.88 : 0.52;
+        const shouldRetry = score < 0.7;
         detail = {
-          score: candidate.length > 40 ? 0.88 : 0.52,
-          shouldRetry: false,
-          summary: "Compatibility evaluator pass"
+          score,
+          shouldRetry,
+          summary: shouldRetry ? "Output needs one more refinement pass." : "Compatibility evaluator pass"
+        };
+        feedback = {
+          id: `feedback_${Math.random().toString(36).slice(2, 10)}`,
+          nodeExecutionId: "",
+          sourceNodeId: node.id,
+          targetNodeId: "",
+          score,
+          shouldRetry,
+          summary: String(detail.summary),
+          createdAt: context.now()
         };
       } else {
         detail = await registry.execute(
@@ -87,12 +105,33 @@ export async function executeDagCompat(
       outputs.set(node.id, detail);
       completed.add(node.id);
       steps.push({ name: node.id, detail });
+      const completedAt = Date.now();
+      const execution: NodeExecution = {
+        id: `nodeexec_${Math.random().toString(36).slice(2, 10)}`,
+        jobRunId: "",
+        nodeId: node.id,
+        nodeType: node.type,
+        status: feedback?.shouldRetry ? "retry_scheduled" : "succeeded",
+        input,
+        output: detail,
+        latencyMs: completedAt - startedAt,
+        tokenUsage: Number(detail.tokensUsed ?? 0),
+        retryCount: 0,
+        startedAt: new Date(startedAt).toISOString(),
+        completedAt: new Date(completedAt).toISOString()
+      };
+      nodeExecutions.push(execution);
+      if (feedback) {
+        feedback.nodeExecutionId = execution.id;
+        nodeFeedback.push(feedback);
+      }
     }
   }
 
   return {
     output: outputs.get(dag.exitNodeId) ?? {},
-    steps
+    steps,
+    nodeExecutions,
+    nodeFeedback
   };
 }
-

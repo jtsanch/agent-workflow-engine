@@ -6,6 +6,8 @@ import type {
   JobRun,
   JobRunStep,
   JobSchedule,
+  NodeExecution,
+  NodeFeedback,
   ToolInvocation
 } from "@personal-agent-os/shared";
 import { asRecord } from "../sql-helpers.js";
@@ -118,6 +120,40 @@ export function mapFeedbackEvent(row: Record<string, unknown>): FeedbackEvent {
     jobRunId: row.job_run_id ? String(row.job_run_id) : row.jobRunId ? String(row.jobRunId) : undefined,
     score: Number(row.score),
     comment: row.comment ? String(row.comment) : undefined,
+    createdAt: new Date(String(row.created_at ?? row.createdAt)).toISOString()
+  };
+}
+
+export function mapNodeExecution(row: Record<string, unknown>): NodeExecution {
+  return {
+    id: String(row.id),
+    jobRunId: String(row.job_run_id ?? row.jobRunId),
+    nodeId: String(row.node_id ?? row.nodeId),
+    nodeType: (row.node_type ?? row.nodeType) as NodeExecution["nodeType"],
+    status: row.status as NodeExecution["status"],
+    input: asRecord(row.input),
+    output: row.output ? asRecord(row.output) : undefined,
+    latencyMs: Number(row.latency_ms ?? row.latencyMs ?? 0),
+    tokenUsage: Number(row.token_usage ?? row.tokenUsage ?? 0),
+    retryCount: Number(row.retry_count ?? row.retryCount ?? 0),
+    startedAt: new Date(String(row.started_at ?? row.startedAt)).toISOString(),
+    completedAt: row.completed_at
+      ? new Date(String(row.completed_at)).toISOString()
+      : row.completedAt
+        ? new Date(String(row.completedAt)).toISOString()
+        : undefined
+  };
+}
+
+export function mapNodeFeedback(row: Record<string, unknown>): NodeFeedback {
+  return {
+    id: String(row.id),
+    nodeExecutionId: String(row.node_execution_id ?? row.nodeExecutionId),
+    sourceNodeId: String(row.source_node_id ?? row.sourceNodeId),
+    targetNodeId: row.target_node_id ? String(row.target_node_id) : row.targetNodeId ? String(row.targetNodeId) : "",
+    score: Number(row.score),
+    shouldRetry: Boolean(row.should_retry ?? row.shouldRetry),
+    summary: String(row.summary),
     createdAt: new Date(String(row.created_at ?? row.createdAt)).toISOString()
   };
 }

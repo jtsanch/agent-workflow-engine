@@ -5,4 +5,6 @@ export * from "./job-runs-repository.js";
 export * from "./job-run-steps-repository.js";
 export * from "./jobs-repository.js";
 export * from "./job-schedules-repository.js";
+export * from "./node-executions-repository.js";
+export * from "./node-feedback-repository.js";
 export * from "./tool-invocations-repository.js";

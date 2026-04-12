@@ -124,4 +124,60 @@ describe("LlmGenerateTextTool", () => {
       })
     );
   });
+
+  it("sanitizes invalid numeric inputs before calling OpenAI", async () => {
+    const context = createContext();
+    process.env.OPENAI_API_KEY = "test-key";
+    process.env.OPENAI_ENABLE_LIVE_TESTS = "true";
+
+    createCompletion.mockResolvedValueOnce({
+      choices: [{ message: { content: "Normalized answer" } }],
+      usage: { total_tokens: 12 },
+      model: "gpt-4.1-mini"
+    });
+
+    await new LlmGenerateTextTool().run(
+      {
+        prompt: "normalize values",
+        temperature: Number.NaN,
+        maxTokens: Number.POSITIVE_INFINITY
+      },
+      context
+    );
+
+    expect(createCompletion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        temperature: 0.2,
+        max_tokens: 800
+      })
+    );
+  });
+
+  it("clamps temperature and maxTokens into valid OpenAI request ranges", async () => {
+    const context = createContext();
+    process.env.OPENAI_API_KEY = "test-key";
+    process.env.OPENAI_ENABLE_LIVE_TESTS = "true";
+
+    createCompletion.mockResolvedValueOnce({
+      choices: [{ message: { content: "Clamped answer" } }],
+      usage: { total_tokens: 18 },
+      model: "gpt-4.1-mini"
+    });
+
+    await new LlmGenerateTextTool().run(
+      {
+        prompt: "clamp values",
+        temperature: -4,
+        maxTokens: -20
+      },
+      context
+    );
+
+    expect(createCompletion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        temperature: 0,
+        max_tokens: 1
+      })
+    );
+  });
 });

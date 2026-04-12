@@ -12,8 +12,12 @@ export class PostgresToolInvocationRepository extends BaseRepository implements 
 
   async createMany(invocations: ToolInvocation[]): Promise<ToolInvocation[]> {
     return this.exec("tool_invocations.create_many", async () => {
-      for (const invocation of invocations) {
-        await this.db.insert(toolInvocationsTable).values({
+      if (invocations.length === 0) {
+        return [];
+      }
+
+      await this.db.insert(toolInvocationsTable).values(
+        invocations.map((invocation) => ({
           id: invocation.id,
           jobRunStepId: invocation.jobRunStepId,
           toolName: invocation.toolName,
@@ -21,8 +25,8 @@ export class PostgresToolInvocationRepository extends BaseRepository implements 
           response: invocation.response ?? null,
           status: invocation.status,
           createdAt: new Date(invocation.createdAt)
-        });
-      }
+        }))
+      );
 
       return invocations.map((row) =>
         mapToolInvocation({

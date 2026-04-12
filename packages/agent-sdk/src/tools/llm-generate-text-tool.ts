@@ -4,6 +4,22 @@ import { BaseTool } from "./base-tool.js";
 import { extractTextContent, getLlmModel, getOpenAiClient } from "./llm-client.js";
 import { DEFAULT_LLM_MAX_TOKENS_PER_CALL, trackLlmTokens } from "./llm-budget.js";
 
+function normalizeTemperature(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return 0.2;
+  }
+
+  return Math.min(2, Math.max(0, value));
+}
+
+function normalizeMaxTokens(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return DEFAULT_LLM_MAX_TOKENS_PER_CALL;
+  }
+
+  return Math.max(1, Math.floor(value));
+}
+
 export class LlmGenerateTextTool extends BaseTool {
   readonly name = "llm.generateText";
   readonly description = "Generates structured or freeform text with OpenAI chat completions.";
@@ -14,8 +30,8 @@ export class LlmGenerateTextTool extends BaseTool {
         ? input.prompt
         : `Generate workflow content using ${JSON.stringify(input)}`;
     const system = typeof input.system === "string" ? input.system : undefined;
-    const temperature = typeof input.temperature === "number" ? input.temperature : 0.2;
-    const maxTokens = typeof input.maxTokens === "number" ? input.maxTokens : DEFAULT_LLM_MAX_TOKENS_PER_CALL;
+    const temperature = normalizeTemperature(input.temperature);
+    const maxTokens = normalizeMaxTokens(input.maxTokens);
 
     const liveOpenAiEnabled =
       process.env.OPENAI_API_KEY &&
@@ -41,9 +57,7 @@ export class LlmGenerateTextTool extends BaseTool {
       ]
     };
 
-    if (maxTokens !== undefined) {
-      request.max_tokens = maxTokens;
-    }
+    request.max_tokens = maxTokens;
 
     const response = await this.withRetries(
       async () => getOpenAiClient().chat.completions.create(request),

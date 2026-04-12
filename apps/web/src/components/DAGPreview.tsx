@@ -10,26 +10,6 @@ interface DAGPreviewProps {
 export function DAGPreview({ agentDefinition, activeNodeId, nodeMeta, onSelectNode }: DAGPreviewProps) {
   const { dag } = agentDefinition;
 
-  const describeOutputs = (schema: AgentDefinition["dag"]["nodes"][number]["outputSchema"]) => {
-    if (schema.type !== "object") {
-      return schema.type;
-    }
-
-    return Object.keys(schema.properties ?? {}).join(", ") || "none";
-  };
-
-  const describeRuntime = (node: AgentDefinition["dag"]["nodes"][number]) => {
-    switch (node.type) {
-      case "tool":
-        return node.tool;
-      case "llm":
-      case "evaluator":
-        return node.strictJson ? "strict-json" : node.type;
-      case "transform":
-        return "sync transform";
-    }
-  };
-
   return (
     <section className="card dag-preview">
       <div className="card-row">
@@ -55,9 +35,9 @@ export function DAGPreview({ agentDefinition, activeNodeId, nodeMeta, onSelectNo
                 <strong>{node.name}</strong>
                 <span className="pill">{node.type}</span>
               </div>
-              <p>{describeRuntime(node)}</p>
+              <p>{node.agentKey}</p>
               {meta?.status ? <p className="muted">Run status: {meta.status}{typeof meta.retryCount === "number" ? ` · Retries: ${meta.retryCount}` : ""}</p> : null}
-              <p className="muted">Outputs: {describeOutputs(node.outputSchema)}</p>
+              <p className="muted">Outputs: {node.outputSchema.fields.map((field) => field.name).join(", ") || "none"}</p>
               {outgoing.length > 0 ? (
                 <p className="muted">Next: {outgoing.map((edge) => `${edge.to} (${edge.type})`).join(", ")}</p>
               ) : null}

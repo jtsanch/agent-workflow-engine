@@ -18,11 +18,11 @@ interface DuckDuckGoNestedTopicGroup {
 }
 
 function isNestedTopicGroup(topic: DuckDuckGoFlatTopic | DuckDuckGoNestedTopicGroup): topic is DuckDuckGoNestedTopicGroup {
-  return "Topics" in topic;
+  return Boolean(topic) && typeof topic === "object" && "Topics" in topic;
 }
 
 function isFlatTopic(topic: DuckDuckGoFlatTopic | DuckDuckGoNestedTopicGroup): topic is DuckDuckGoFlatTopic {
-  return "Text" in topic || "FirstURL" in topic;
+  return Boolean(topic) && typeof topic === "object" && ("Text" in topic || "FirstURL" in topic);
 }
 
 export class WebSearchTool extends BaseTool {

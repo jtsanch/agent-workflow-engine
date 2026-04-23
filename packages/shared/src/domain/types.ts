@@ -116,7 +116,7 @@ export interface OutputContract<TOutput = JsonObject> {
 
 export interface BaseNode<TInput = JsonObject, TOutput = JsonObject> {
   id: string;
-  version: number;
+  version: string;
   type: AgentNodeType;
   name: string;
   description?: string;
@@ -307,7 +307,7 @@ export interface NodeExecution {
   id: EntityId;
   jobRunId: EntityId;
   nodeId: string;
-  nodeVersion: number;
+  nodeVersion: string;
   nodeType: AgentNodeType;
   status: NodeExecutionStatus;
   input?: JsonObject;

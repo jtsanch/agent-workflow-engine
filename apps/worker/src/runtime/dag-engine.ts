@@ -1,4 +1,4 @@
-import type { AgentDAG, AgentNode, NodeExecution, NodeFeedback, NodeOutput, ToolInvocation } from "@personal-agent-os/shared";
+import type { AgentDAG, AgentNode, JsonObject, NodeExecution, NodeFeedback, NodeOutput, ToolInvocation } from "@personal-agent-os/shared";
 import type { ExecutionContext } from "@personal-agent-os/agent-sdk";
 import { ExecutionState } from "./execution-state.js";
 import { resolveInputBindings } from "./input-resolver.js";
@@ -166,6 +166,63 @@ function scheduleRetries(
   }
 }
 
+function toJsonObject(value: Record<string, unknown>): JsonObject {
+  return value as JsonObject;
+}
+
+function toToolInvocationStatus(status: NodeExecution["status"]): ToolInvocation["status"] {
+  if (status === "failed") {
+    return "failed";
+  }
+
+  if (status === "pending" || status === "running") {
+    return "pending";
+  }
+
+  return "succeeded";
+}
+
+function toToolInvocationResponse(output: NodeOutput | undefined): JsonObject | undefined {
+  if (!output) {
+    return undefined;
+  }
+
+  if (output.data && typeof output.data === "object" && !Array.isArray(output.data)) {
+    return toJsonObject(output.data as Record<string, unknown>);
+  }
+
+  return toJsonObject({ value: output.data ?? null });
+}
+
+function collectToolInvocations(dag: AgentDAG, nodeExecutions: NodeExecution[]): ToolInvocation[] {
+  const toolNodesById = new Map(
+    dag.nodes
+      .filter((node): node is Extract<AgentNode, { type: "tool" }> => node.type === "tool")
+      .map((node) => [node.id, node])
+  );
+
+  return nodeExecutions.flatMap((execution) => {
+    if (execution.nodeType !== "tool") {
+      return [];
+    }
+
+    const toolNode = toolNodesById.get(execution.nodeId);
+    if (!toolNode) {
+      return [];
+    }
+
+    return [{
+      id: `tool_${Math.random().toString(36).slice(2, 10)}`,
+      nodeExecutionId: execution.id,
+      toolName: toolNode.toolName,
+      request: toJsonObject(execution.input ?? execution.resolvedInput),
+      response: toToolInvocationResponse(execution.output),
+      status: toToolInvocationStatus(execution.status),
+      createdAt: execution.completedAt ?? execution.startedAt
+    }];
+  });
+}
+
 export type ExecutionResult = {
   finalOutput: unknown;
   nodeExecutions: NodeExecution[];
@@ -191,7 +248,6 @@ export async function executeDAG(
 
   const state = new ExecutionState(initialInputs);
   const nodeExecutions: NodeExecution[] = [];
-  const toolInvocations: ToolInvocation[] = [];
   const nodeFeedback: NodeFeedback[] = [];
   context.jobInput = initialInputs;
   context.nodeOutputs = {};
@@ -218,7 +274,7 @@ export async function executeDAG(
   return {
     finalOutput: collectFinalOutputs(dag, state),
     nodeExecutions,
-    toolInvocations,
+    toolInvocations: collectToolInvocations(dag, nodeExecutions),
     nodeFeedback,
     memoryWrites: []
   };

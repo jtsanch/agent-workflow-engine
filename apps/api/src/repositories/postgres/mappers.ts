@@ -147,7 +147,7 @@ export function mapNodeExecution(row: Record<string, unknown>): NodeExecution {
     id: String(row.id),
     jobRunId: String(row.job_run_id ?? row.jobRunId),
     nodeId: String(row.node_id ?? row.nodeId),
-    nodeVersion: Number(row.node_version ?? row.nodeVersion ?? 1),
+    nodeVersion: String(row.node_version ?? row.nodeVersion ?? "1.0.0"),
     nodeType: (row.node_type ?? row.nodeType) as NodeExecution["nodeType"],
     status: row.status as NodeExecution["status"],
     input: asJsonObject(row.input ?? row.resolved_input ?? row.resolvedInput),

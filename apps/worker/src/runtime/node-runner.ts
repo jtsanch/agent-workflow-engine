@@ -46,6 +46,7 @@ function schemaToExample(schema: JSONSchema | undefined): string {
   switch (schema.type) {
     case "string":
       return '"example"';
+    case "integer":
     case "number":
       return "0";
     case "boolean":
@@ -175,7 +176,6 @@ async function callLLM(
       }
     };
   }
-  console.log(`llm options: ${JSON.stringify(options)}`);
   const response = await options.context.registry.execute(
     "llm.generateText",
     {
@@ -190,7 +190,6 @@ async function callLLM(
     },
     options.context
   ) as LLMOutput;
-  console.log(`llm response: ${JSON.stringify(response, null, 2)}`);
   if (typeof response.text !== "string") {
     throw new Error("LLM returned a non-text response");
   }

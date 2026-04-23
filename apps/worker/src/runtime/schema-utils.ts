@@ -40,6 +40,7 @@ export function validateSchema(value: unknown, schema: JSONSchema | undefined, p
       }
       return;
     case "number":
+    case "integer":
       if (typeof value !== "number" || Number.isNaN(value)) {
         throw new Error(`Expected ${describePath(path)} to be a number`);
       }

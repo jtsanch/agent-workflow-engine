@@ -61,7 +61,15 @@ describe("executeDAG", () => {
       "validatePlan",
       "finalizePlan"
     ]);
-    expect(result.toolInvocations).toEqual([]);
+    expect(result.toolInvocations).toHaveLength(1);
+    expect(result.toolInvocations[0]).toMatchObject({
+      nodeExecutionId: expect.any(String),
+      toolName: "web_search.search",
+      request: expect.any(Object),
+      response: expect.any(Object),
+      status: "succeeded",
+      createdAt: expect.any(String)
+    });
     expect(result.nodeFeedback).toEqual([]);
     expect(result.memoryWrites).toEqual([]);
   });
@@ -81,7 +89,7 @@ describe("executeDAG", () => {
     );
 
     expect(result.nodeExecutions.length).toBeGreaterThan(0);
-    expect(result.toolInvocations).toEqual([]);
+    expect(result.toolInvocations).toHaveLength(1);
     expect(result.nodeFeedback).toEqual([]);
     expect(result.memoryWrites).toEqual([]);
     const validatePlanExecution = result.nodeExecutions.find((execution) => execution.nodeId === "validatePlan");

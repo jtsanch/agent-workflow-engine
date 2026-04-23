@@ -27,7 +27,6 @@ export function resolveDataRef(ref: DataRef, optional: boolean, context: Executi
         case "node_output": {
             const nodeOutput = context.nodeOutputs?.[ref.nodeId] as NodeOutput | undefined;
             if (!nodeOutput) {
-                console.log(`optional: ${optional}`);
                 if (!optional) {
                     throw new Error(`Missing dependency: ${ref.nodeId}`);
                 }
@@ -37,7 +36,7 @@ export function resolveDataRef(ref: DataRef, optional: boolean, context: Executi
         }
 
         case "memory":
-            return context.memoryStore?.get(ref.key);
+            throw new Error('Memory not supported yet');
 
         case "static":
             return ref.value;

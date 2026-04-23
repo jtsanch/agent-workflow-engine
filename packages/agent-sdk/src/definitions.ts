@@ -174,7 +174,7 @@ export const groceryAgentDefinition: AgentDefinition = defineAgent({
         id: "generateMeals",
         type: "llm",
         name: "Generate Meals",
-        version: 1,
+        version: "1.0.0",
         promptTemplate: `
 You are a meal planner.
 
@@ -249,7 +249,7 @@ Return JSON:
         id: "extractIngredients",
         type: "transform",
         name: "Extract Ingredients",
-        version: 1,
+        version: "1.0.0",
         input: {
           bindings: [
             {
@@ -281,7 +281,7 @@ Return JSON:
         id: "priceLookup",
         type: "tool",
         name: "Lookup Prices",
-        version: 1,
+        version: "1.0.0",
         toolName: "web_search.search",
         input: {
           bindings: [
@@ -320,7 +320,7 @@ Return JSON:
         id: "optimizePlan",
         type: "llm",
         name: "Optimize Plan",
-        version: 2,
+        version: "1.0.0",
         promptTemplate: `
 You are optimizing a meal plan to fit within a budget.
 
@@ -463,7 +463,7 @@ Return STRICT JSON:
         id: "validatePlan",
         type: "transform",
         name: "Validate Plan",
-        version: 1,
+        version: "1.0.0",
         input: {
           bindings: [
             {
@@ -509,7 +509,7 @@ Return STRICT JSON:
         id: "finalizePlan",
         type: "transform",
         name: "Finalize Plan",
-        version: 1,
+        version: "1.0.0",
         input: {
           bindings: [
             {

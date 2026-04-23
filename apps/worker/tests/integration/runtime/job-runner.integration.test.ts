@@ -34,7 +34,14 @@ describe("runJob integration", () => {
     });
     expect(execution.nodeExecutions.length).toBeGreaterThan(0);
     expect(execution.nodeFeedback).toEqual([]);
-    expect(execution.toolInvocations).toEqual([]);
+    expect(execution.toolInvocations.length).toBeGreaterThan(0);
+    expect(execution.toolInvocations[0]).toMatchObject({
+      nodeExecutionId: expect.any(String),
+      toolName: expect.any(String),
+      request: expect.any(Object),
+      status: "succeeded",
+      createdAt: expect.any(String)
+    });
     expect(execution.memoryWrites).toEqual([]);
   });
 

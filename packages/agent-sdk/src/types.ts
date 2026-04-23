@@ -21,10 +21,7 @@ export interface ExecutionContext {
   jobInput?: Record<string, unknown>;
   registry: ToolRegistry;
   nodeOutputs?: Record<string, NodeOutput>;
-  memoryStore?: {
-    get(key: string): Promise<unknown>;
-    set(key: string, value: unknown): Promise<void>;
-  };
+  memoryStore?: {};
   now: () => string;
   logger: {
     info(message: string, context?: Record<string, unknown>): void;

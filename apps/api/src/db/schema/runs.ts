@@ -54,7 +54,7 @@ export const nodeExecutions = {
   jobRunId: text("job_run_id").notNull(),
   nodeId: text("node_id").notNull(),
   nodeType: text("node_type").notNull(),
-  nodeVersion: integer("node_version").notNull(),
+  nodeVersion: text("node_version").notNull(),
   status: text("status").notNull(),
   input: jsonb("input").$type<Record<string, unknown>>().notNull(),
   resolvedInput: jsonb("resolved_input").$type<Record<string, unknown>>().notNull(),

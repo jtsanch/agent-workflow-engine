@@ -17,14 +17,7 @@ export async function runJob(job: Job) {
     jobInput: job.inputs,
     registry: createToolRegistry(),
     nodeOutputs: {},
-    memoryStore: {
-      async get() {
-        return undefined;
-      },
-      async set() {
-        return undefined;
-      }
-    },
+    memoryStore: {},
     now: () => new Date().toISOString(),
     logger: { info: () => undefined },
     llmBudget: createLlmBudget()

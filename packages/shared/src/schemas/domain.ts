@@ -10,7 +10,7 @@ export const agentEdgeTypeSchema = z.enum(["data", "feedback", "control", "conte
 
 export const jsonSchemaSchema: z.ZodType = z.lazy(() =>
   z.object({
-    type: z.enum(["string", "number", "boolean", "object", "array", "null"]),
+    type: z.enum(["string", "integer", "number", "boolean", "object", "array", "null"]),
     title: z.string().optional(),
     description: z.string().optional(),
     properties: z.record(jsonSchemaSchema).optional(),
@@ -225,7 +225,7 @@ export const nodeExecutionSchema = z.object({
   id: z.string(),
   jobRunId: z.string(),
   nodeId: z.string(),
-  nodeVersion: z.number(),
+  nodeVersion: z.string(),
   nodeType: agentNodeTypeSchema,
   status: z.enum(["pending", "running", "succeeded", "failed", "skipped", "retry_scheduled", "cancelled"]),
   input: z.record(z.unknown()).optional(),

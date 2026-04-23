@@ -5,7 +5,7 @@ import { applyFeedbackRetry, shouldRetry } from "../../../src/runtime/retry-mana
 
 const retryingNode: EvaluatorNode = {
   id: "reviewer",
-  version: 1,
+  version: "1.0.0",
   type: "evaluator",
   name: "Reviewer",
   promptTemplate: "Return evaluation JSON",
@@ -67,7 +67,7 @@ describe("retry-manager", () => {
       nodes: [
         {
           id: "draft",
-          version: 1,
+          version: "1.0.0",
           type: "llm",
           name: "Draft",
           promptTemplate: "Return JSON",
@@ -101,7 +101,7 @@ describe("retry-manager", () => {
         retryingNode,
         {
           id: "summary",
-          version: 1,
+          version: "1.0.0",
           type: "transform",
           name: "Summary",
           input: {

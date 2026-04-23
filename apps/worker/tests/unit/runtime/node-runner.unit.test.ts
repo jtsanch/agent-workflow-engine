@@ -46,7 +46,7 @@ describe("runNode", () => {
   it("executes a tool node", async () => {
     const node: AgentNode = {
       id: "deals",
-      version: 1,
+      version: "1.0.0",
       type: "tool",
       toolName: "web_search.search",
       name: "Deals",
@@ -92,7 +92,7 @@ describe("runNode", () => {
   it("executes an llm node", async () => {
     const node: AgentNode = {
       id: "draft",
-      version: 1,
+      version: "1.0.0",
       type: "llm",
       name: "Draft",
       promptTemplate: 'Return JSON: { "summaryText": string }',
@@ -142,7 +142,7 @@ describe("runNode", () => {
   it("executes a transform node", async () => {
     const node: AgentNode = {
       id: "aggregate",
-      version: 1,
+      version: "1.0.0",
       type: "transform",
       name: "Aggregate",
       input: {
@@ -183,7 +183,7 @@ describe("runNode", () => {
   it("executes an evaluator node and emits retry feedback when needed", async () => {
     const node: AgentNode = {
       id: "review",
-      version: 1,
+      version: "1.0.0",
       type: "evaluator",
       name: "Review",
       promptTemplate: `

@@ -1,7 +1,8 @@
 import { Pool } from "pg";
-import { seedAgentDefinitions } from "@personal-agent-os/agent-sdk";
-import type { Job, JobRunStep, NodeExecution, NodeFeedback, ToolInvocation } from "@personal-agent-os/shared";
+import { seedAgentDefinitions } from "../../../../packages/agent-sdk/src/definitions.js";
+import type { Job, JsonObject, NodeExecution, ToolInvocation } from "@personal-agent-os/shared";
 import { runJob } from "./job-runner.js";
+import { DAGExecutionError } from "./dag-engine.js";
 
 interface QueuedRunRow {
   run_id: string;
@@ -14,6 +15,10 @@ interface QueuedRunRow {
   input: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+}
+
+function toJsonObject(value: Record<string, unknown>): JsonObject {
+  return value as JsonObject;
 }
 
 async function claimNextQueuedRun(pool: Pool): Promise<{ runId: string; job: Job } | null> {
@@ -61,7 +66,7 @@ async function claimNextQueuedRun(pool: Pool): Promise<{ runId: string; job: Job
         agentDefinitionKey: row.agent_definition_key ?? undefined,
         name: row.job_name,
         status: row.job_status as Job["status"],
-        inputs: row.input,
+        inputs: toJsonObject(row.input),
         createdAt: new Date(row.created_at).toISOString(),
         updatedAt: new Date(row.updated_at).toISOString()
       }
@@ -80,9 +85,9 @@ export async function processNextQueuedRun(pool: Pool): Promise<boolean> {
     return false;
   }
 
-  const { job, runId } = claimed;
+  const {job, runId} = claimed;
   const agentDefinition = seedAgentDefinitions.find(
-    (agent) => agent.dag.id === job.dagId || agent.key === job.agentDefinitionKey
+      (agent) => agent.dag.id === job.dagId || agent.key === job.agentDefinitionKey
   );
   if (!agentDefinition) {
     await pool.query("update job_runs set status = 'failed', error_message = $2, completed_at = now() where id = $1", [
@@ -93,99 +98,70 @@ export async function processNextQueuedRun(pool: Pool): Promise<boolean> {
   }
 
   try {
-    const execution = await runJob(job);
-    const memory = execution.memory;
-
+    const executionResult = await runJob(job);
     const completedAt = new Date().toISOString();
-    const legacySteps = Array.isArray((execution.result as { steps?: Array<{ name: string; detail: Record<string, unknown> }> }).steps)
-      ? (execution.result as { steps: Array<{ name: string; detail: Record<string, unknown> }> }).steps
-      : execution.nodeExecutions.map((nodeExecution) => ({
-          name: nodeExecution.nodeId,
-          detail: nodeExecution.output ?? {}
-        }));
-
-    const steps: JobRunStep[] = legacySteps.map((step) => ({
-      id: `step_${Math.random().toString(36).slice(2, 10)}`,
-      jobRunId: runId,
-      name: step.name,
-      status: "succeeded",
-      startedAt: completedAt,
-      completedAt,
-      detail: step.detail
-    }));
-
-    const invocations: ToolInvocation[] = steps.map((step) => ({
-      id: `tool_${Math.random().toString(36).slice(2, 10)}`,
-      jobRunStepId: step.id,
-      toolName: step.name,
-      request: { dagId: job.dagId },
-      response: step.detail,
-      status: "succeeded",
-      createdAt: completedAt
-    }));
-
-    const nodeExecutions = execution.nodeExecutions.map((nodeExecution) => ({
+    const nodeExecutions = executionResult.nodeExecutions.map((nodeExecution) => ({
       ...nodeExecution,
       jobRunId: runId
     }));
-    const nodeFeedback = execution.nodeFeedback;
+    const toolInvocations = executionResult.toolInvocations;
+    const memoryWrites = executionResult.memoryWrites;
+    const finalOutput = executionResult.finalOutput;
 
-    for (const step of steps) {
-      await pool.query(
-        `
-          insert into job_run_steps (id, job_run_id, name, status, started_at, completed_at, detail)
-          values ($1, $2, $3, $4, $5, $6, $7::jsonb)
-        `,
-        [step.id, step.jobRunId, step.name, step.status, step.startedAt, step.completedAt, JSON.stringify(step.detail)]
-      );
+    await persistNodeExecutions(pool, nodeExecutions);
+
+    for (const invocation of toolInvocations) {
+      await insertToolInvocation(pool, {
+        ...invocation,
+        createdAt: invocation.createdAt ?? completedAt
+      });
     }
 
-    for (const invocation of invocations) {
+    for (const memoryWrite of memoryWrites) {
       await pool.query(
         `
-          insert into tool_invocations (id, job_run_step_id, tool_name, request, response, status, created_at)
-          values ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7)
+          insert into job_memories (id, job_id, key, value, updated_at)
+          values ($1, $2, $3, $4::jsonb, $5)
+          on conflict (job_id, key)
+          do update set value = excluded.value, updated_at = excluded.updated_at
         `,
         [
-          invocation.id,
-          invocation.jobRunStepId,
-          invocation.toolName,
-          JSON.stringify(invocation.request),
-          JSON.stringify(invocation.response ?? null),
-          invocation.status,
-          invocation.createdAt
+          `memory_${Math.random().toString(36).slice(2, 10)}`,
+          job.id,
+          memoryWrite.key,
+          JSON.stringify(
+            memoryWrite.nodeId === undefined
+              ? memoryWrite.value ?? null
+              : {
+                  value: memoryWrite.value ?? null,
+                  nodeId: memoryWrite.nodeId
+                }
+          ),
+          completedAt
         ]
       );
     }
 
-    for (const nodeExecution of nodeExecutions) {
-      await insertNodeExecution(pool, nodeExecution);
-    }
-
-    for (const feedback of nodeFeedback) {
-      await insertNodeFeedback(pool, feedback);
-    }
-
     await pool.query(
-      `
-        insert into job_memories (id, job_id, key, value, updated_at)
-        values ($1, $2, $3, $4::jsonb, $5)
-        on conflict (job_id, key)
-        do update set value = excluded.value, updated_at = excluded.updated_at
-      `,
-      [memory.id, memory.jobId, memory.key, JSON.stringify(memory.value), memory.updatedAt]
-    );
-
-    await pool.query(
-      `
-        update job_runs
-        set status = 'succeeded', completed_at = $2, output = $3::jsonb, error_message = null
-        where id = $1
-      `,
-      [runId, completedAt, JSON.stringify({ ...execution.result.output, evaluation: execution.evaluation })]
+        `
+          update job_runs
+          set status = 'succeeded',
+              completed_at = $2,
+              output = $3::jsonb, error_message = null
+          where id = $1
+        `,
+        [runId, completedAt, JSON.stringify(finalOutput ?? null)]
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Worker execution failed";
+    console.error(`Error executing job run ${runId}:`, error);
+    if (error instanceof DAGExecutionError) {
+      await persistNodeExecutions(pool, error.nodeExecutions.map((nodeExecution) => ({
+        ...nodeExecution,
+        jobRunId: runId
+      })));
+    }
+
     await pool.query("update job_runs set status = 'failed', completed_at = now(), error_message = $2 where id = $1", [
       runId,
       message
@@ -195,24 +171,34 @@ export async function processNextQueuedRun(pool: Pool): Promise<boolean> {
   return true;
 }
 
+async function persistNodeExecutions(pool: Pool, nodeExecutions: NodeExecution[]): Promise<void> {
+  for (const nodeExecution of nodeExecutions) {
+    await insertNodeExecution(pool, nodeExecution);
+  }
+}
+
 async function insertNodeExecution(pool: Pool, nodeExecution: NodeExecution): Promise<void> {
   await pool.query(
     `
       insert into node_executions (
-        id, job_run_id, node_id, node_type, status, input, output, latency_ms, token_usage, retry_count, started_at, completed_at
+        id, job_run_id, node_id, node_type, node_version, status, input, resolved_input, output, error_message, latency_ms, token_usage, cost_usd, retry_count, started_at, completed_at
       )
-      values ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, $10, $11, $12)
+      values ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9::jsonb, $10, $11, $12, $13, $14, $15, $16)
     `,
     [
       nodeExecution.id,
       nodeExecution.jobRunId,
       nodeExecution.nodeId,
       nodeExecution.nodeType,
+      nodeExecution.nodeVersion,
       nodeExecution.status,
-      JSON.stringify(nodeExecution.input),
+      JSON.stringify(nodeExecution.input ?? nodeExecution.resolvedInput),
+      JSON.stringify(nodeExecution.resolvedInput),
       JSON.stringify(nodeExecution.output ?? null),
+      nodeExecution.errorMessage ?? null,
       nodeExecution.latencyMs,
       nodeExecution.tokenUsage,
+      nodeExecution.costUsd ?? null,
       nodeExecution.retryCount,
       nodeExecution.startedAt,
       nodeExecution.completedAt ?? null
@@ -220,23 +206,20 @@ async function insertNodeExecution(pool: Pool, nodeExecution: NodeExecution): Pr
   );
 }
 
-async function insertNodeFeedback(pool: Pool, feedback: NodeFeedback): Promise<void> {
+async function insertToolInvocation(pool: Pool, invocation: ToolInvocation): Promise<void> {
   await pool.query(
     `
-      insert into node_feedback (
-        id, node_execution_id, source_node_id, target_node_id, score, should_retry, summary, created_at
-      )
-      values ($1, $2, $3, $4, $5, $6, $7, $8)
+      insert into tool_invocations (id, node_execution_id, tool_name, request, response, status, created_at)
+      values ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7)
     `,
     [
-      feedback.id,
-      feedback.nodeExecutionId,
-      feedback.sourceNodeId,
-      feedback.targetNodeId || null,
-      feedback.score,
-      feedback.shouldRetry,
-      feedback.summary,
-      feedback.createdAt
+      invocation.id,
+      invocation.nodeExecutionId,
+      invocation.toolName,
+      JSON.stringify(invocation.request),
+      JSON.stringify(invocation.response ?? null),
+      invocation.status,
+      invocation.createdAt
     ]
   );
 }

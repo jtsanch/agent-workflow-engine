@@ -63,7 +63,7 @@ Each node is one executable step in the workflow. Supported node types:
 - `llm`
 - `tool`
 - `evaluator`
-- `aggregator`
+- `transform`
 
 Important node properties:
 

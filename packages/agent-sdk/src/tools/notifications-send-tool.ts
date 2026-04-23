@@ -1,14 +1,14 @@
-import type { ExecutionContext } from "../types.js";
+import type { ExecutionContext, NotificationsSendInput, NotificationsSendOutput, UnknownObject } from "../types.js";
 import { BaseTool } from "./base-tool.js";
 
-export class NotificationsSendTool extends BaseTool {
+export class NotificationsSendTool extends BaseTool<"notifications.send", NotificationsSendInput, NotificationsSendOutput> {
   readonly name = "notifications.send";
   readonly description = "Sends a notification to a configured webhook.";
 
-  protected async execute(input: Record<string, unknown>, context: ExecutionContext) {
-    const destination = String(input.destination ?? "demo@example.com");
-    const channel = String(input.channel ?? "email");
-    const message = String(input.message ?? "");
+  protected async execute(input: NotificationsSendInput, context: ExecutionContext): Promise<NotificationsSendOutput> {
+    const destination = input.destination;
+    const channel = input.channel;
+    const message = input.message;
     const webhookUrl = process.env.NOTIFICATIONS_WEBHOOK_URL;
 
     if (!webhookUrl) {
@@ -25,7 +25,7 @@ export class NotificationsSendTool extends BaseTool {
     }
 
     try {
-      const response = await this.request<Record<string, unknown>>(
+      const response = await this.request<UnknownObject>(
         {
           method: "POST",
           url: webhookUrl,

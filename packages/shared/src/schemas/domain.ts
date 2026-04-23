@@ -5,52 +5,137 @@ export const alertChannelSchema = z.enum(["email", "slack", "push"]);
 export const jobStatusSchema = z.enum(["active", "paused", "disabled"]);
 export const jobRunStatusSchema = z.enum(["queued", "running", "succeeded", "failed"]);
 export const jobRunStepStatusSchema = z.enum(["pending", "running", "succeeded", "failed"]);
-export const agentNodeTypeSchema = z.enum(["llm", "tool", "evaluator", "aggregator"]);
-export const agentEdgeTypeSchema = z.enum(["data", "feedback"]);
+export const agentNodeTypeSchema = z.enum(["llm", "tool", "transform", "evaluator", "condition"]);
+export const agentEdgeTypeSchema = z.enum(["data", "feedback", "control", "context"]);
 
-export const structuredSchemaFieldSchema = z.object({
-  name: z.string(),
-  type: z.enum(["string", "number", "boolean", "object", "array"]),
-  description: z.string().optional(),
-  required: z.boolean().optional()
-});
-
-export const structuredSchemaSchema = z.object({
-  title: z.string(),
-  fields: z.array(structuredSchemaFieldSchema)
-});
+export const jsonSchemaSchema: z.ZodType = z.lazy(() =>
+  z.object({
+    type: z.enum(["string", "number", "boolean", "object", "array", "null"]),
+    title: z.string().optional(),
+    description: z.string().optional(),
+    properties: z.record(jsonSchemaSchema).optional(),
+    required: z.array(z.string()).optional(),
+    items: jsonSchemaSchema.optional(),
+    additionalProperties: z.union([z.boolean(), jsonSchemaSchema]).optional(),
+    enum: z.array(z.unknown()).optional()
+  })
+);
 
 export const retryPolicySchema = z.object({
   maxRetries: z.number().int().min(0),
-  strategy: z.enum(["feedback", "replan"])
+  strategy: z.enum(["regenerate", "rerun", "feedback_adjust"]),
+  backoffMs: z.number().optional()
 });
 
-export const agentNodeSchema = z.object({
+const dataRefSchema = z.discriminatedUnion("source", [
+  z.object({ source: z.literal("job_input"), path: z.string().optional() }),
+  z.object({ source: z.literal("node_output"), nodeId: z.string(), path: z.string().optional() }),
+  z.object({ source: z.literal("memory"), key: z.string(), path: z.string().optional() }),
+  z.object({ source: z.literal("static"), value: z.unknown() }),
+  z.object({ source: z.literal("context"), path: z.string() })
+]);
+
+const inputBindingSchema = z.object({
+  key: z.string(),
+  ref: dataRefSchema
+});
+
+const executionPolicySchema = z.object({
+  timeoutMs: z.number().optional(),
+  retryPolicy: retryPolicySchema.optional(),
+  cachePolicy: z
+    .object({
+      enabled: z.boolean(),
+      keyTemplate: z.string().optional(),
+      ttlSeconds: z.number().optional()
+    })
+    .optional(),
+  concurrencyKey: z.string().optional(),
+  priority: z.number().optional()
+});
+
+const baseNodeSchema = z.object({
   id: z.string(),
+  version: z.number(),
   type: agentNodeTypeSchema,
-  agentKey: z.string(),
   name: z.string(),
   description: z.string().optional(),
-  inputMapping: z.record(z.string()),
-  outputSchema: structuredSchemaSchema,
-  config: z.record(z.unknown()).optional(),
-  retryPolicy: retryPolicySchema.optional()
+  deterministic: z.boolean().optional(),
+  input: z
+    .object({
+      schema: jsonSchemaSchema.optional(),
+      bindings: z.array(inputBindingSchema).optional()
+    })
+    .optional(),
+  output: z.object({
+    schema: jsonSchemaSchema,
+    outputKind: z.enum(["structured", "text", "decision", "critique"]).optional()
+  }),
+  execution: executionPolicySchema.optional(),
+  tags: z.array(z.string()).optional()
 });
+
+export const toolNodeSchema = baseNodeSchema.extend({
+  type: z.literal("tool"),
+  toolName: z.string()
+});
+
+export const transformNodeSchema = baseNodeSchema.extend({
+  type: z.literal("transform"),
+  run: z.function().args(z.record(z.unknown()), z.unknown()).returns(z.union([z.unknown(), z.promise(z.unknown())]))
+});
+
+const llmOutputConfigSchema = z.object({
+  schema: jsonSchemaSchema,
+  enforcement: z.enum(["strict", "best_effort"])
+});
+
+const llmBaseNodeSchema = baseNodeSchema.extend({
+  promptTemplate: z.string(),
+  temperature: z.number().optional()
+});
+
+export const llmNodeSchema = llmBaseNodeSchema.extend({
+  type: z.literal("llm"),
+  model: z.string().optional(),
+  maxTokens: z.number().optional(),
+  outputConfig: llmOutputConfigSchema
+});
+
+export const evaluatorNodeSchema = llmBaseNodeSchema.extend({
+  type: z.literal("evaluator"),
+  model: z.string().optional()
+});
+
+export const conditionNodeSchema = baseNodeSchema.extend({
+  type: z.literal("condition"),
+  branches: z.array(z.object({ toNodeId: z.string() })).optional(),
+  defaultToNodeId: z.string().optional()
+});
+
+export const agentNodeSchema = z.discriminatedUnion("type", [
+  toolNodeSchema,
+  transformNodeSchema,
+  llmNodeSchema,
+  evaluatorNodeSchema,
+  conditionNodeSchema
+]);
 
 export const agentEdgeSchema = z.object({
   from: z.string(),
   to: z.string(),
-  type: agentEdgeTypeSchema
+  type: agentEdgeTypeSchema.optional().default("data")
 });
 
 export const agentDagSchema = z.object({
   id: z.string(),
   version: z.string(),
   name: z.string(),
+  description: z.string().optional(),
   nodes: z.array(agentNodeSchema).min(1),
   edges: z.array(agentEdgeSchema),
   entryNodeIds: z.array(z.string()).min(1),
-  exitNodeId: z.string()
+  exitNodeIds: z.array(z.string()).min(1)
 });
 
 export const alertPreferenceSchema = z.object({
@@ -68,7 +153,7 @@ export const agentDefinitionSchema = z.object({
   version: z.string(),
   name: z.string(),
   description: z.string(),
-  inputSchema: structuredSchemaSchema,
+  inputSchema: jsonSchemaSchema,
   uiSchema: uiFormSchema,
   dag: agentDagSchema,
   defaultSchedule: z.string(),
@@ -99,6 +184,11 @@ export const jobScheduleSchema = z.object({
   updatedAt: z.string()
 });
 
+export const nodeOutputSchema = z.object({
+  data: z.unknown(),
+  artifacts: z.array(z.unknown())
+});
+
 export const jobRunSchema = z.object({
   id: z.string(),
   jobId: z.string(),
@@ -106,7 +196,7 @@ export const jobRunSchema = z.object({
   triggerSource: z.enum(["manual", "schedule", "api"]),
   startedAt: z.string(),
   completedAt: z.string().optional(),
-  output: z.record(z.unknown()).optional(),
+  output: nodeOutputSchema.optional(),
   errorMessage: z.string().optional()
 });
 
@@ -122,8 +212,9 @@ export const jobRunStepSchema = z.object({
 
 export const toolInvocationSchema = z.object({
   id: z.string(),
-  jobRunStepId: z.string(),
+  nodeExecutionId: z.string(),
   toolName: z.string(),
+  toolVersion: z.string().optional(),
   request: z.record(z.unknown()),
   response: z.record(z.unknown()).optional(),
   status: z.enum(["pending", "succeeded", "failed"]),
@@ -134,12 +225,16 @@ export const nodeExecutionSchema = z.object({
   id: z.string(),
   jobRunId: z.string(),
   nodeId: z.string(),
+  nodeVersion: z.number(),
   nodeType: agentNodeTypeSchema,
-  status: z.enum(["running", "succeeded", "failed", "retry_scheduled"]),
-  input: z.record(z.unknown()),
-  output: z.record(z.unknown()).optional(),
-  latencyMs: z.number(),
-  tokenUsage: z.number(),
+  status: z.enum(["pending", "running", "succeeded", "failed", "skipped", "retry_scheduled", "cancelled"]),
+  input: z.record(z.unknown()).optional(),
+  resolvedInput: z.record(z.unknown()),
+  output: nodeOutputSchema.optional(),
+  errorMessage: z.string().optional(),
+  latencyMs: z.number().optional(),
+  tokenUsage: z.number().optional(),
+  costUsd: z.number().optional(),
   retryCount: z.number(),
   startedAt: z.string(),
   completedAt: z.string().optional()
@@ -160,7 +255,7 @@ export const jobMemorySchema = z.object({
   id: z.string(),
   jobId: z.string(),
   key: z.string(),
-  value: z.record(z.unknown()),
+  value: z.unknown(),
   updatedAt: z.string()
 });
 
@@ -196,4 +291,3 @@ export const simulateRunInputSchema = z.object({
 
 export type CreateJobInput = z.infer<typeof createJobInputSchema>;
 export type SimulateRunInput = z.infer<typeof simulateRunInputSchema>;
-

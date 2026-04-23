@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import type { AgentDefinition, Job, NodeExecution, NodeFeedback } from "@personal-agent-os/shared";
+import type { AgentDefinition, Job, NodeExecution, NodeFeedback, ToolInvocation } from "@personal-agent-os/shared";
+import { Button } from "../components/Button.js";
 import { DAGWorkflowViewer, type WorkflowEdge, type WorkflowNode } from "../components/DAGWorkflowViewer.js";
 import { PageHeader } from "../components/PageHeader.js";
-import { listAgents, listJobs, listRuns } from "../lib/api.js";
+import { getRun, listAgents, listJobs, listRuns } from "../lib/api.js";
 
 interface RunListItem {
   id: string;
@@ -11,8 +12,8 @@ interface RunListItem {
   status: string;
   triggerSource: "manual" | "schedule" | "api";
   startedAt: string;
-  output?: Record<string, unknown>;
-  steps: Array<{ name: string; status: string; detail?: Record<string, unknown> }>;
+  output?: unknown;
+  toolInvocations: ToolInvocation[];
   nodeExecutions: NodeExecution[];
   nodeFeedback: NodeFeedback[];
 }
@@ -78,6 +79,18 @@ function getNodeStatus(execution?: NodeExecution): WorkflowNode["status"] {
   return "idle";
 }
 
+function getNodeStatusLabel(execution?: NodeExecution): string {
+  if (!execution) {
+    return "idle";
+  }
+
+  if (execution.status === "retry_scheduled") {
+    return "retry scheduled";
+  }
+
+  return execution.status;
+}
+
 export function RunsPage() {
   const [runs, setRuns] = useState<RunListItem[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -85,6 +98,7 @@ export function RunsPage() {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
+  const [refreshingRunId, setRefreshingRunId] = useState<string | null>(null);
 
   useEffect(() => {
     void Promise.all([listRuns(), listJobs(), listAgents()]).then(([runItems, jobItems, agentItems]) => {
@@ -135,14 +149,16 @@ export function RunsPage() {
     return selectedAgent.dag.nodes.map((node) => {
       const execution = nodeExecutionById[node.id];
       const feedback = nodeFeedbackByNodeId[node.id];
-      const step = selectedRun?.steps.find((currentStep) => currentStep.name === node.id);
-      const outputPayload = execution?.output ?? step?.detail ?? {};
+      const outputPayload =
+        execution?.output?.data ??
+        execution?.output ??
+        {};
       const output: ReactNode = (
         <div className="workflow-output-stack">
           <div className="detail-grid">
             <article className="detail-item">
               <strong>Status</strong>
-              <p>{execution?.status ?? "idle"}</p>
+              <p>{getNodeStatusLabel(execution)}</p>
             </article>
             <article className="detail-item">
               <strong>Retries</strong>
@@ -183,7 +199,7 @@ export function RunsPage() {
         output
       };
     });
-  }, [nodeExecutionById, nodeFeedbackByNodeId, selectedAgent, selectedRun?.steps]);
+  }, [nodeExecutionById, nodeFeedbackByNodeId, selectedAgent]);
 
   const workflowEdges: WorkflowEdge[] = useMemo(
     () =>
@@ -199,6 +215,31 @@ export function RunsPage() {
     ? workflowNodes.find((node) => node.id === selectedNodeId)
     : undefined;
   const isDagOpen = expandedRunId !== null;
+
+  async function handleFlowToggle(run: RunListItem) {
+    const isOpen = expandedRunId === run.id;
+    if (isOpen) {
+      setExpandedRunId(null);
+      return;
+    }
+
+    setSelectedRunId(run.id);
+    setSelectedNodeId(null);
+
+    if (run.status === "queued" || run.status === "running") {
+      setRefreshingRunId(run.id);
+      try {
+        const refreshedRun = await getRun(run.id);
+        setRuns((currentRuns) =>
+          currentRuns.map((candidate) => (candidate.id === refreshedRun.id ? refreshedRun : candidate))
+        );
+      } finally {
+        setRefreshingRunId(null);
+      }
+    }
+
+    setExpandedRunId(run.id);
+  }
 
   return (
     <section>
@@ -240,17 +281,13 @@ export function RunsPage() {
                     </div>
 
                     <div className="run-shell-actions">
-                      <button
-                        type="button"
-                        className="ghost-button"
-                        onClick={() => {
-                          setSelectedRunId(run.id);
-                          setSelectedNodeId(null);
-                          setExpandedRunId((current) => (current === run.id ? null : run.id));
-                        }}
+                      <Button
+                        variant="subtle"
+                        onClick={() => void handleFlowToggle(run)}
+                        disabled={refreshingRunId === run.id}
                       >
-                        {dagVisible ? "Hide Flow" : "View Flow"}
-                      </button>
+                        {dagVisible ? "Hide Flow" : refreshingRunId === run.id ? "Refreshing..." : "View Flow"}
+                      </Button>
                     </div>
                   </div>
 
@@ -274,35 +311,35 @@ export function RunsPage() {
                   ) : null}
                 </div>
               </div>
+
+              {dagVisible && isSelected && selectedNode ? (
+                <section className="workflow-inspector run-shell-inspector">
+                  <div className="card-row">
+                    <div>
+                      <p className="eyebrow">Inspector Panel</p>
+                      <h3>{selectedNode.title}</h3>
+                    </div>
+                    <div className="workflow-inspector-actions">
+                      <span className={`status workflow-status-${selectedNode.status ?? "idle"}`}>
+                        {selectedNode.status ?? "idle"}
+                      </span>
+                      <Button variant="subtle" size="sm" onClick={() => setSelectedNodeId(null)}>
+                        Close
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="workflow-output-panel">
+                    {selectedNode.output}
+                  </div>
+                </section>
+              ) : null}
             </article>
           );
         })}
 
         {runs.length === 0 ? <article className="card empty">No runs have been simulated yet.</article> : null}
       </div>
-
-      {isDagOpen && selectedNode ? (
-        <section className="card workflow-inspector workflow-inspector-bottom">
-          <div className="card-row">
-            <div>
-              <p className="eyebrow">Inspector Panel</p>
-              <h3>{selectedNode?.title ?? "Selected Node Output"}</h3>
-            </div>
-            <div className="workflow-inspector-actions">
-              <span className={`status workflow-status-${selectedNode.status ?? "idle"}`}>
-                {selectedNode.status ?? "idle"}
-              </span>
-              <button type="button" className="ghost-button ghost-button-compact" onClick={() => setSelectedNodeId(null)}>
-                Close
-              </button>
-            </div>
-          </div>
-
-          <div className="workflow-output-panel">
-            {selectedRun && selectedAgent ? selectedNode.output : <p className="muted">Open a run and choose a node to inspect its output.</p>}
-          </div>
-        </section>
-      ) : null}
     </section>
   );
 }

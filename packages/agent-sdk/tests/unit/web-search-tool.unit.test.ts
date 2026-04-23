@@ -1,6 +1,7 @@
 import axios from "axios";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WebSearchTool } from "../../src/tools/web-search-tool.js";
+import type { ExecutionContext, WebSearchOutput } from "../../src/types.js";
 
 vi.mock("axios", () => ({
   default: {
@@ -10,7 +11,10 @@ vi.mock("axios", () => ({
 }));
 
 const mockedAxios = vi.mocked(axios, true);
-const context = {
+const context: ExecutionContext = {
+  registry: {
+    execute: async () => undefined
+  },
   now: () => "2026-04-11T00:00:00.000Z",
   logger: {
     info: () => undefined
@@ -39,12 +43,8 @@ describe("WebSearchTool", () => {
     } as never);
 
     const result = await new WebSearchTool().run({ query: "budget groceries" }, context);
-    const typedResult = result as {
-      query: string;
-      results: Array<{ title: string; url: string; snippet: string }>;
-    };
+    const typedResult = result as WebSearchOutput;
 
-    expect(typedResult.query).toBe("budget groceries");
     expect(typedResult.results).toEqual([
       {
         title: "Grocery planning",
@@ -78,11 +78,30 @@ describe("WebSearchTool", () => {
       } as never);
 
     const result = await new WebSearchTool().run({ query: "groceries" }, context);
-    const typedResult = result as {
-      results: Array<{ title: string; url: string; snippet: string }>;
-    };
+    const typedResult = result as WebSearchOutput;
 
     expect(mockedAxios.request).toHaveBeenCalledTimes(2);
     expect(typedResult.results[0]?.url).toBe("https://example.com/fallback");
+  });
+
+  it("builds a store-aware query when explicit query is omitted", async () => {
+    process.env.WEB_SEARCH_ENABLE_LIVE_TESTS = "true";
+    mockedAxios.request.mockResolvedValueOnce({
+      data: {
+        RelatedTopics: []
+      }
+    } as never);
+
+    const result = await new WebSearchTool().run(
+      {
+        zipcode: "94107",
+        stores: "Trader Joe's, Costco",
+        category: "weekly grocery deals"
+      },
+      context
+    );
+    const typedResult = result as WebSearchOutput;
+
+    expect(typedResult.results).toEqual([]);
   });
 });

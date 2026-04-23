@@ -31,6 +31,21 @@ button {
   color: inherit;
 }
 
+:root {
+  --button-shadow-rest:
+    0 12px 24px rgba(1, 8, 6, 0.18),
+    0 2px 0 rgba(255, 255, 255, 0.08) inset,
+    0 -2px 0 rgba(0, 0, 0, 0.18) inset;
+  --button-shadow-hover:
+    0 16px 28px rgba(1, 8, 6, 0.24),
+    0 2px 0 rgba(255, 255, 255, 0.12) inset,
+    0 -2px 0 rgba(0, 0, 0, 0.22) inset;
+  --button-shadow-pressed:
+    0 6px 12px rgba(1, 8, 6, 0.18),
+    0 1px 0 rgba(255, 255, 255, 0.08) inset,
+    0 -1px 0 rgba(0, 0, 0, 0.24) inset;
+}
+
 .shell {
   display: grid;
   grid-template-columns: 260px 1fr;
@@ -133,6 +148,85 @@ button {
   background: rgba(255, 255, 255, 0.08);
 }
 
+.ui-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 12px 16px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  color: #f5fff8;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  appearance: none;
+  transition:
+    transform 130ms ease,
+    box-shadow 130ms ease,
+    border-color 130ms ease,
+    background 130ms ease,
+    color 130ms ease;
+  box-shadow: var(--button-shadow-rest);
+}
+
+.ui-button:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--button-shadow-hover);
+}
+
+.ui-button:active {
+  transform: translateY(1px);
+  box-shadow: var(--button-shadow-pressed);
+}
+
+.ui-button:focus-visible {
+  outline: 2px solid rgba(204, 244, 219, 0.92);
+  outline-offset: 2px;
+}
+
+.ui-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.ui-button-primary {
+  border-color: rgba(192, 255, 214, 0.22);
+  background:
+    linear-gradient(180deg, rgba(132, 230, 171, 0.95) 0%, rgba(68, 171, 111, 0.95) 100%);
+  color: #082012;
+}
+
+.ui-button-secondary {
+  border-color: rgba(164, 223, 187, 0.22);
+  background:
+    linear-gradient(180deg, rgba(39, 83, 62, 0.96) 0%, rgba(23, 48, 36, 0.96) 100%);
+}
+
+.ui-button-subtle {
+  border-color: rgba(255, 255, 255, 0.12);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.03) 100%);
+  color: #edf7ef;
+}
+
+.ui-button-sm {
+  min-height: 38px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  font-size: 14px;
+}
+
+.ui-button-md {
+  font-size: 14px;
+}
+
+.ui-button-full {
+  width: 100%;
+}
+
 .form {
   display: grid;
   gap: 20px;
@@ -146,8 +240,7 @@ button {
 
 .form input,
 .form select,
-.form textarea,
-.form button {
+.form textarea {
   padding: 12px 14px;
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -251,11 +344,13 @@ button {
 .run-shell-summary-main {
   display: grid;
   gap: 18px;
+  min-width: 0;
 }
 
 .run-shell-summary-copy {
   display: grid;
   gap: 14px;
+  min-width: 0;
 }
 
 .run-shell-topline {
@@ -279,32 +374,23 @@ button {
   margin: 0;
 }
 
+.job-card-actions,
 .run-shell-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
 }
 
+.job-card-actions {
+  margin-top: 18px;
+}
+
 .run-shell-flow {
   width: 100%;
   min-width: 0;
-  justify-self: end;
-}
-
-.ghost-button {
-  padding: 10px 14px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.04);
-  cursor: pointer;
-}
-
-.ghost-button:hover {
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.ghost-button-compact {
-  padding: 8px 12px;
+  max-width: 100%;
+  justify-self: stretch;
+  overflow: hidden;
 }
 
 .workflow-viewer,
@@ -312,25 +398,32 @@ button {
   display: grid;
   gap: 16px;
   width: 100%;
+  min-width: 0;
 }
 
 .workflow-graph-panel {
+  min-width: 0;
+  width: 100%;
   padding: 12px;
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.06);
+  overflow: hidden;
 }
 
 .workflow-graph-scroll {
   position: relative;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: auto;
   border-radius: 12px;
   min-height: 260px;
   max-height: 480px;
   width: 100%;
+  max-width: 100%;
   background:
     radial-gradient(circle at top left, rgba(140, 217, 173, 0.08), transparent 36%),
     rgba(4, 10, 8, 0.35);
+  scrollbar-gutter: stable both-edges;
 }
 
 .workflow-edges {
@@ -348,6 +441,7 @@ button {
 
 .workflow-node-layer {
   position: relative;
+  min-width: max-content;
 }
 
 .workflow-node {
@@ -441,8 +535,8 @@ button {
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-.workflow-inspector-bottom {
-  margin-top: 20px;
+.run-shell-inspector {
+  margin-top: 6px;
 }
 
 .workflow-inspector-actions {

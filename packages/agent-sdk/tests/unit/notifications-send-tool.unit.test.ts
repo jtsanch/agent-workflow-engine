@@ -1,6 +1,7 @@
 import axios from "axios";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NotificationsSendTool } from "../../src/tools/notifications-send-tool.js";
+import type { ExecutionContext } from "../../src/types.js";
 
 vi.mock("axios", () => ({
   default: {
@@ -10,7 +11,10 @@ vi.mock("axios", () => ({
 }));
 
 const mockedAxios = vi.mocked(axios, true);
-const context = {
+const context: ExecutionContext = {
+  registry: {
+    execute: async () => undefined
+  },
   now: () => "2026-04-11T00:00:00.000Z",
   logger: {
     info: () => undefined

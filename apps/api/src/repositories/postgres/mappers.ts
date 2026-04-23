@@ -10,7 +10,7 @@ import type {
   NodeFeedback,
   ToolInvocation
 } from "@personal-agent-os/shared";
-import { asRecord } from "../sql-helpers.js";
+import { asJsonObject, asJsonValue, asNodeOutput, asRecord } from "../sql-helpers.js";
 
 export function mapJob(row: Record<string, unknown>): Job {
   return {
@@ -24,7 +24,7 @@ export function mapJob(row: Record<string, unknown>): Job {
         ? String(row.agentDefinitionKey)
         : undefined,
     status: row.status as Job["status"],
-    inputs: asRecord(row.inputs ?? row.input),
+    inputs: asJsonObject(row.inputs ?? row.input),
     createdAt: new Date(String(row.created_at ?? row.createdAt)).toISOString(),
     updatedAt: new Date(String(row.updated_at ?? row.updatedAt)).toISOString()
   };
@@ -54,6 +54,17 @@ export function mapAlertPreference(row: Record<string, unknown>): AlertPreferenc
 }
 
 export function mapJobRun(row: Record<string, unknown>): JobRun {
+  const rawOutput = row.output;
+  const normalizedOutput =
+    rawOutput == null
+      ? undefined
+      : typeof rawOutput === "object" &&
+          rawOutput !== null &&
+          "data" in rawOutput &&
+          "artifacts" in rawOutput
+        ? rawOutput as JobRun["output"]
+        : { data: rawOutput, artifacts: [] };
+
   return {
     id: String(row.id),
     jobId: String(row.job_id ?? row.jobId),
@@ -65,7 +76,7 @@ export function mapJobRun(row: Record<string, unknown>): JobRun {
       : row.completedAt
         ? new Date(String(row.completedAt)).toISOString()
         : undefined,
-    output: row.output ? asRecord(row.output) : undefined,
+    output: normalizedOutput,
     errorMessage:
       row.error_message !== undefined && row.error_message !== null
         ? String(row.error_message)
@@ -87,17 +98,17 @@ export function mapJobRunStep(row: Record<string, unknown>): JobRunStep {
       : row.completedAt
         ? new Date(String(row.completedAt)).toISOString()
         : undefined,
-    detail: row.detail ? asRecord(row.detail) : undefined
+    detail: row.detail !== undefined && row.detail !== null ? asJsonValue(row.detail) : undefined
   };
 }
 
 export function mapToolInvocation(row: Record<string, unknown>): ToolInvocation {
   return {
     id: String(row.id),
-    jobRunStepId: String(row.job_run_step_id ?? row.jobRunStepId),
+    nodeExecutionId: String(row.node_execution_id ?? row.nodeExecutionId),
     toolName: String(row.tool_name ?? row.toolName),
-    request: asRecord(row.request),
-    response: row.response ? asRecord(row.response) : undefined,
+    request: asJsonObject(row.request),
+    response: row.response ? asJsonObject(row.response) : undefined,
     status: row.status as ToolInvocation["status"],
     createdAt: new Date(String(row.created_at ?? row.createdAt)).toISOString()
   };
@@ -108,7 +119,13 @@ export function mapJobMemory(row: Record<string, unknown>): JobMemory {
     id: String(row.id),
     jobId: String(row.job_id ?? row.jobId),
     key: String(row.key),
-    value: asRecord(row.value),
+    value: asJsonValue(row.value),
+    nodeId:
+      row.node_id !== undefined && row.node_id !== null
+        ? String(row.node_id)
+        : row.nodeId !== undefined && row.nodeId !== null
+          ? String(row.nodeId)
+          : undefined,
     updatedAt: new Date(String(row.updated_at ?? row.updatedAt)).toISOString()
   };
 }
@@ -125,16 +142,30 @@ export function mapFeedbackEvent(row: Record<string, unknown>): FeedbackEvent {
 }
 
 export function mapNodeExecution(row: Record<string, unknown>): NodeExecution {
+  const resolvedInput = asRecord(row.resolved_input ?? row.resolvedInput ?? row.input);
   return {
     id: String(row.id),
     jobRunId: String(row.job_run_id ?? row.jobRunId),
     nodeId: String(row.node_id ?? row.nodeId),
+    nodeVersion: Number(row.node_version ?? row.nodeVersion ?? 1),
     nodeType: (row.node_type ?? row.nodeType) as NodeExecution["nodeType"],
     status: row.status as NodeExecution["status"],
-    input: asRecord(row.input),
-    output: row.output ? asRecord(row.output) : undefined,
-    latencyMs: Number(row.latency_ms ?? row.latencyMs ?? 0),
-    tokenUsage: Number(row.token_usage ?? row.tokenUsage ?? 0),
+    input: asJsonObject(row.input ?? row.resolved_input ?? row.resolvedInput),
+    resolvedInput,
+    output: asNodeOutput(row.output),
+    errorMessage: row.error_message ? String(row.error_message) : row.errorMessage ? String(row.errorMessage) : undefined,
+    latencyMs:
+      row.latency_ms != null || row.latencyMs != null
+        ? Number(row.latency_ms ?? row.latencyMs)
+        : undefined,
+    tokenUsage:
+      row.token_usage != null || row.tokenUsage != null
+        ? Number(row.token_usage ?? row.tokenUsage)
+        : undefined,
+    costUsd:
+      row.cost_usd != null || row.costUsd != null
+        ? Number(row.cost_usd ?? row.costUsd)
+        : undefined,
     retryCount: Number(row.retry_count ?? row.retryCount ?? 0),
     startedAt: new Date(String(row.started_at ?? row.startedAt)).toISOString(),
     completedAt: row.completed_at

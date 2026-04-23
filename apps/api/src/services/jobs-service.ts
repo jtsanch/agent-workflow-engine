@@ -13,6 +13,7 @@ import type {
 import { createId } from "../common/ids.js";
 import { AppError } from "../common/errors.js";
 import { AgentCatalogService } from "./agent-catalog.js";
+import { asJsonObject } from "../repositories/sql-helpers.js";
 
 export class JobsService {
   constructor(
@@ -48,7 +49,7 @@ export class JobsService {
       dagId: input.dagId ?? agentDefinition.dag.id,
       agentDefinitionKey: input.agentDefinitionKey,
       status: "active",
-      inputs: input.inputs,
+      inputs: asJsonObject(input.inputs),
       createdAt: now,
       updatedAt: now
     };

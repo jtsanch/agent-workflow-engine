@@ -1,23 +1,47 @@
 import { describe, expect, it } from "vitest";
-import type { AgentDAG, AgentNode, NodeFeedback } from "@personal-agent-os/shared";
+import type { AgentDAG, EvaluatorNode, NodeFeedback } from "@personal-agent-os/shared";
 import { ExecutionState } from "../../../src/runtime/execution-state.js";
 import { applyFeedbackRetry, shouldRetry } from "../../../src/runtime/retry-manager.js";
 
-const retryingNode: AgentNode = {
+const retryingNode: EvaluatorNode = {
   id: "reviewer",
+  version: 1,
   type: "evaluator",
-  agentKey: "reviewer",
   name: "Reviewer",
-  inputMapping: {
-    candidate: "draft.text"
+  promptTemplate: "Return evaluation JSON",
+  input: {
+    schema: {
+      type: "object",
+      properties: {
+        draftSummary: { type: "string" }
+      },
+      required: ["draftSummary"],
+      additionalProperties: false
+    }
   },
-  outputSchema: {
-    title: "Review Output",
-    fields: [{ name: "shouldRetry", type: "boolean", required: true }]
+  output: {
+    schema: {
+      type: "object",
+      properties: {
+        score: { type: "number" },
+        passed: { type: "boolean" },
+        issues: {
+          type: "array",
+          items: { type: "string" }
+        },
+        summary: { type: "string" },
+        shouldRetry: { type: "boolean" }
+      },
+      required: ["score", "passed", "issues", "summary", "shouldRetry"],
+      additionalProperties: false
+    },
+    outputKind: "critique"
   },
-  retryPolicy: {
-    maxRetries: 1,
-    strategy: "feedback"
+  execution: {
+    retryPolicy: {
+      maxRetries: 1,
+      strategy: "rerun"
+    }
   }
 };
 
@@ -25,12 +49,12 @@ describe("retry-manager", () => {
   it("retries only when the node allows it and the output requests it", () => {
     const state = new ExecutionState({});
 
-    expect(shouldRetry(retryingNode, { shouldRetry: true }, state)).toBe(true);
+    expect(shouldRetry(retryingNode, { data: { shouldRetry: true } }, state)).toBe(true);
 
     state.markForRetry(retryingNode.id);
 
-    expect(shouldRetry(retryingNode, { shouldRetry: true }, state)).toBe(false);
-    expect(shouldRetry(retryingNode, { shouldRetry: false }, state)).toBe(false);
+    expect(shouldRetry(retryingNode, { data: { shouldRetry: true } }, state)).toBe(false);
+    expect(shouldRetry(retryingNode, { data: { shouldRetry: false } }, state)).toBe(false);
   });
 
   it("marks feedback targets for retry and clears their downstream outputs", () => {
@@ -39,42 +63,74 @@ describe("retry-manager", () => {
       version: "1.0.0",
       name: "Retry Test",
       entryNodeIds: ["draft"],
-      exitNodeId: "reviewer",
+      exitNodeIds: ["reviewer"],
       nodes: [
         {
           id: "draft",
+          version: 1,
           type: "llm",
-          agentKey: "llm.generateText",
           name: "Draft",
-          inputMapping: {},
-          outputSchema: {
-            title: "Draft Output",
-            fields: [{ name: "text", type: "string", required: true }]
+          promptTemplate: "Return JSON",
+          input: {
+            schema: {
+              type: "object",
+              properties: {},
+              additionalProperties: false
+            }
           },
-          retryPolicy: {
-            maxRetries: 1,
-            strategy: "feedback"
+          output: {
+            schema: {
+              type: "object",
+              properties: {
+                planSummary: { type: "string" }
+              },
+              required: ["planSummary"],
+              additionalProperties: false
+            }
+          },
+          outputConfig: {
+            schema: {
+              type: "object",
+              properties: {
+                planSummary: { type: "string" }
+              }
+            },
+            enforcement: "strict"
           }
         },
         retryingNode,
         {
           id: "summary",
-          type: "aggregator",
-          agentKey: "aggregator",
+          version: 1,
+          type: "transform",
           name: "Summary",
-          inputMapping: {
-            candidate: "draft.text"
+          input: {
+            schema: {
+              type: "object",
+              properties: {
+                planSummary: { type: "string" }
+              },
+              required: ["planSummary"],
+              additionalProperties: false
+            }
           },
-          outputSchema: {
-            title: "Summary Output",
-            fields: [{ name: "candidate", type: "string", required: true }]
+          run: async (input) => ({ draftSummary: input.planSummary }),
+          output: {
+            schema: {
+              type: "object",
+              properties: {
+                draftSummary: { type: "string" }
+              },
+              required: ["draftSummary"],
+              additionalProperties: false
+            }
           }
         }
       ],
       edges: [
-        { from: "draft", to: "reviewer", type: "data" },
-        { from: "draft", to: "summary", type: "data" },
-        { from: "reviewer", to: "draft", type: "feedback" }
+        { id: "edge_draft_review", from: "draft", to: "reviewer", type: "data" },
+        { id: "edge_draft_summary", from: "draft", to: "summary", type: "data" },
+        { id: "edge_review_draft", from: "reviewer", to: "draft", type: "feedback" }
       ]
     };
     const feedback: NodeFeedback = {
@@ -88,8 +144,8 @@ describe("retry-manager", () => {
       createdAt: "2026-04-10T00:00:00.000Z"
     };
     const state = new ExecutionState({});
-    state.store("draft", { text: "Draft v1" });
-    state.store("summary", { candidate: "Draft v1" });
+    state.store("draft", { data: { planSummary: "Draft v1" }, artifacts: [] });
+    state.store("summary", { data: { draftSummary: "Draft v1" }, artifacts: [] });
 
     const targets = applyFeedbackRetry(dag, retryingNode, feedback, state);
 

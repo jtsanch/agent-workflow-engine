@@ -9,7 +9,7 @@ describe("ExecutionState", () => {
       version: "1.0.0",
       name: "Execution State",
       entryNodeIds: ["start"],
-      exitNodeId: "finish",
+      exitNodeIds: ["finish"],
       nodes: [],
       edges: []
     };
@@ -21,22 +21,22 @@ describe("ExecutionState", () => {
     state.markRunning("start");
     expect(state.isRunning("start")).toBe(true);
 
-    state.store("start", { ok: true });
+    state.store("start", { data: { ok: true }, artifacts: [] });
     expect(state.isCompleted("start")).toBe(true);
-    expect(state.getNodeOutput("start")).toEqual({ ok: true });
+    expect(state.getNodeOutput("start")).toEqual({ data: { ok: true }, artifacts: [] });
 
     state.markForRetry("start");
     expect(state.getRetryCount("start")).toBe(1);
     expect(state.isRetryPending("start")).toBe(true);
 
-    state.store("finish", { done: true });
+    state.store("finish", { data: { done: true }, artifacts: [] });
     expect(state.isComplete(dag)).toBe(true);
   });
 
   it("clears downstream node state when asked", () => {
     const state = new ExecutionState({});
-    state.store("a", { value: 1 });
-    state.store("b", { value: 2 });
+    state.store("a", { data: { value: 1 }, artifacts: [] });
+    state.store("b", { data: { value: 2 }, artifacts: [] });
 
     state.clearSubgraph(["a", "b"]);
 

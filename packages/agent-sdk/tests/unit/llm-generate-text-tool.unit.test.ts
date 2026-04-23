@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createLlmBudget } from "../../src/tools/llm-budget.js";
 import { LlmGenerateTextTool } from "../../src/tools/llm-generate-text-tool.js";
 import { resetOpenAiClientForTests } from "../../src/tools/llm-client.js";
+import type { ExecutionContext } from "../../src/types.js";
 
 const createCompletion = vi.fn();
 
@@ -17,8 +18,11 @@ vi.mock("openai", () => {
   };
 });
 
-function createContext() {
+function createContext(): ExecutionContext {
   return {
+    registry: {
+      execute: vi.fn()
+    },
     now: () => "2026-04-11T00:00:00.000Z",
     logger: {
       info: vi.fn(),
@@ -43,11 +47,11 @@ describe("LlmGenerateTextTool", () => {
 
   it("returns a mock response when OPENAI_API_KEY is not configured", async () => {
     const context = createContext();
-    const result = await new LlmGenerateTextTool().run({ prompt: "Hello world" }, context);
+    const result = await new LlmGenerateTextTool().run({ messages: [{ role: "user", content: "Hello world" }] }, context);
 
     expect(result).toMatchObject({
-      provider: "mock",
-      tokensUsed: 0
+      metadata: { provider: "mock" },
+      usage: { totalTokens: 0 }
     });
     expect(createCompletion).not.toHaveBeenCalled();
   });
@@ -72,24 +76,23 @@ describe("LlmGenerateTextTool", () => {
         model: "gpt-4.1-mini"
       });
 
-    const result = await new LlmGenerateTextTool().run({ prompt: "Say hi" }, context);
+    const result = await new LlmGenerateTextTool().run({ messages: [{ role: "user", content: "Say hi" }] }, context);
 
     expect(createCompletion).toHaveBeenCalledTimes(2);
     expect(result).toMatchObject({
       text: "Generated answer",
-      tokensUsed: 42,
-      provider: "openai",
-      model: "gpt-4.1-mini"
+      usage: { totalTokens: 42 },
+      metadata: { provider: "openai", model: "gpt-4.1-mini" }
     });
-    expect(context.llmBudget.consumedTokens).toBe(42);
+    expect(context.llmBudget!.consumedTokens).toBe(42);
   });
 
   it("logs when the budget warning threshold is crossed and throws when the cap is exceeded", async () => {
     const context = createContext();
     process.env.OPENAI_API_KEY = "test-key";
     process.env.OPENAI_ENABLE_LIVE_TESTS = "true";
-    context.llmBudget.warningThreshold = 50;
-    context.llmBudget.maxTokens = 60;
+    context.llmBudget!.warningThreshold = 50;
+    context.llmBudget!.maxTokens = 60;
 
     createCompletion.mockResolvedValueOnce({
       choices: [{ message: { content: "Large answer" } }],
@@ -97,7 +100,7 @@ describe("LlmGenerateTextTool", () => {
       model: "gpt-4.1-mini"
     });
 
-    await new LlmGenerateTextTool().run({ prompt: "first" }, context);
+    await new LlmGenerateTextTool().run({ messages: [{ role: "user", content: "first" }] }, context);
     expect(context.logger.warn).toHaveBeenCalledWith(
       "LLM token usage is nearing the run budget",
       expect.objectContaining({
@@ -113,7 +116,7 @@ describe("LlmGenerateTextTool", () => {
       model: "gpt-4.1-mini"
     });
 
-    await expect(new LlmGenerateTextTool().run({ prompt: "second" }, context)).rejects.toThrow(
+    await expect(new LlmGenerateTextTool().run({ messages: [{ role: "user", content: "second" }] }, context)).rejects.toThrow(
       "LLM token budget exceeded"
     );
     expect(context.logger.warn).toHaveBeenCalledWith(
@@ -138,7 +141,7 @@ describe("LlmGenerateTextTool", () => {
 
     await new LlmGenerateTextTool().run(
       {
-        prompt: "normalize values",
+        messages: [{ role: "user", content: "normalize values" }],
         temperature: Number.NaN,
         maxTokens: Number.POSITIVE_INFINITY
       },
@@ -148,7 +151,7 @@ describe("LlmGenerateTextTool", () => {
     expect(createCompletion).toHaveBeenCalledWith(
       expect.objectContaining({
         temperature: 0.2,
-        max_tokens: 800
+        max_completion_tokens: 800
       })
     );
   });
@@ -166,7 +169,7 @@ describe("LlmGenerateTextTool", () => {
 
     await new LlmGenerateTextTool().run(
       {
-        prompt: "clamp values",
+        messages: [{ role: "user", content: "clamp values" }],
         temperature: -4,
         maxTokens: -20
       },
@@ -176,7 +179,7 @@ describe("LlmGenerateTextTool", () => {
     expect(createCompletion).toHaveBeenCalledWith(
       expect.objectContaining({
         temperature: 0,
-        max_tokens: 1
+        max_completion_tokens: 1
       })
     );
   });

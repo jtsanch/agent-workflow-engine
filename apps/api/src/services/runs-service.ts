@@ -1,5 +1,6 @@
-import { ToolRegistry, createLlmBudget, executeAgent } from "@personal-agent-os/agent-sdk";
-import type { JobRun, JobRunStep, NodeExecution, NodeFeedback, ToolInvocation, UserContext } from "@personal-agent-os/shared";
+import { createLlmBudget } from "../../../../packages/agent-sdk/src/tools/llm-budget.js";
+import type { ExecutionContext } from "../../../../packages/agent-sdk/src/types.js";
+import type { JobRun, NodeExecution, NodeFeedback, ToolInvocation, UserContext } from "@personal-agent-os/shared";
 import type {
   JobMemoryRepository,
   JobRepository,
@@ -14,6 +15,13 @@ import { AppError } from "../common/errors.js";
 import { AgentCatalogService } from "./agent-catalog.js";
 import { createDefaultToolRegistry } from "../worker-compat/tool-registry.js";
 import { executeDagCompat } from "../worker-compat/dag-engine.js";
+import { asJsonValue } from "../repositories/sql-helpers.js";
+
+export type HydratedRun = JobRun & {
+  toolInvocations: ToolInvocation[];
+  nodeExecutions: NodeExecution[];
+  nodeFeedback: NodeFeedback[];
+};
 
 export class RunsService {
   constructor(
@@ -27,26 +35,49 @@ export class RunsService {
     private readonly agentCatalogService: AgentCatalogService
   ) {}
 
-  async listRuns(userContext: UserContext): Promise<Array<JobRun & { steps: JobRunStep[]; nodeExecutions: NodeExecution[]; nodeFeedback: NodeFeedback[] }>> {
+  async listRuns(userContext: UserContext): Promise<HydratedRun[]> {
     const runs = await this.jobRunRepository.listByUser(userContext.userId);
+    return this.hydrateRuns(runs);
+  }
+
+  async getRun(
+    userContext: UserContext,
+    runId: string
+  ): Promise<HydratedRun> {
+    const runs = await this.jobRunRepository.listByUser(userContext.userId);
+    const run = runs.find((candidate) => candidate.id === runId);
+    if (!run) {
+      throw new AppError(`Unknown run: ${runId}`, 404, "run_not_found");
+    }
+
+    const [hydratedRun] = await this.hydrateRuns([run]);
+    return hydratedRun;
+  }
+
+  private async hydrateRuns(
+    runs: JobRun[]
+  ): Promise<HydratedRun[]> {
     const runIds = runs.map((run) => run.id);
 
-    const [steps, nodeExecutions] = await Promise.all([
-      this.jobRunStepRepository.listByRunIds(runIds),
-      this.nodeExecutionRepository.listByRunIds(runIds)
-    ]);
+    const nodeExecutions = await this.nodeExecutionRepository.listByRunIds(runIds);
     const nodeFeedback = await this.nodeFeedbackRepository.listByExecutionIds(
       nodeExecutions.map((execution) => execution.id)
     );
+    const toolInvocations = await this.toolInvocationRepository.listByExecutionIds(
+      nodeExecutions.map((execution) => execution.id)
+    );
 
-    const stepsByRunId = groupBy(steps, (step) => step.jobRunId);
     const nodeExecutionsByRunId = groupBy(nodeExecutions, (execution) => execution.jobRunId);
     const runIdByExecutionId = new Map(nodeExecutions.map((execution) => [execution.id, execution.jobRunId] as const));
     const nodeFeedbackByRunId = groupBy(nodeFeedback, (feedback) => runIdByExecutionId.get(feedback.nodeExecutionId) ?? "");
+    const toolInvocationsByRunId = groupBy(
+      toolInvocations,
+      (invocation) => runIdByExecutionId.get(invocation.nodeExecutionId) ?? ""
+    );
 
     return runs.map((run) => ({
       ...run,
-      steps: stepsByRunId.get(run.id) ?? [],
+      toolInvocations: toolInvocationsByRunId.get(run.id) ?? [],
       nodeExecutions: nodeExecutionsByRunId.get(run.id) ?? [],
       nodeFeedback: nodeFeedbackByRunId.get(run.id) ?? []
     }));
@@ -69,7 +100,7 @@ export class RunsService {
     return this.jobRunRepository.create(run);
   }
 
-  async simulateRun(jobId: string): Promise<JobRun> {
+  async executeRun(jobId: string): Promise<JobRun> {
     const job = await this.jobRepository.findById(jobId);
     if (!job) {
       throw new AppError(`Unknown job: ${jobId}`, 404, "job_not_found");
@@ -85,50 +116,35 @@ export class RunsService {
     const run: JobRun = {
       id: createId("run"),
       jobId: job.id,
-      status: "running",
+      status: "queued",
       triggerSource: "manual",
       startedAt: now
     };
     await this.jobRunRepository.create(run);
 
-    const context = {
+    const context: ExecutionContext = {
+      registry: createDefaultToolRegistry(),
+      jobInput: job.inputs,
+      nodeOutputs: {},
       now: () => new Date().toISOString(),
       logger: { info: () => undefined },
       llmBudget: createLlmBudget()
     };
-    const registry = createDefaultToolRegistry() as ToolRegistry;
-    const result =
-      job.dagId && agentDefinition.dag
-        ? await executeDagCompat(agentDefinition.dag, job.inputs, registry, context)
-        : await executeAgent(agentDefinition, job, context, registry);
+    const result = await executeDagCompat(
+      agentDefinition.dag,
+      job.inputs,
+      createDefaultToolRegistry(),
+      context
+    );
     const nodeExecutions: NodeExecution[] =
       "nodeExecutions" in result && Array.isArray(result.nodeExecutions) ? result.nodeExecutions : [];
     const nodeFeedback: NodeFeedback[] =
       "nodeFeedback" in result && Array.isArray(result.nodeFeedback) ? result.nodeFeedback : [];
+    const toolInvocations: ToolInvocation[] =
+      "toolInvocations" in result && Array.isArray(result.toolInvocations) ? result.toolInvocations : [];
 
     const completedAt = new Date().toISOString();
-    const steps: JobRunStep[] = result.steps.map((step) => ({
-      id: createId("step"),
-      jobRunId: run.id,
-      name: step.name,
-      status: "succeeded",
-      startedAt: now,
-      completedAt,
-      detail: step.detail
-    }));
-
-    const invocations: ToolInvocation[] = steps.map((step) => ({
-      id: createId("tool"),
-      jobRunStepId: step.id,
-      toolName: step.name,
-      request: { generatedBy: "simulateRun" },
-      response: step.detail,
-      status: "succeeded",
-      createdAt: now
-    }));
-
-    await this.jobRunStepRepository.createMany(steps);
-    await this.toolInvocationRepository.createMany(invocations);
+    await this.toolInvocationRepository.createMany(toolInvocations);
     await this.nodeExecutionRepository.createMany(
       nodeExecutions.map((execution: NodeExecution) => ({
         ...execution,
@@ -140,7 +156,7 @@ export class RunsService {
       id: createId("memory"),
       jobId: job.id,
       key: "latest-output",
-      value: result.output,
+      value: asJsonValue(result.finalOutput),
       updatedAt: completedAt
     });
 
@@ -148,7 +164,10 @@ export class RunsService {
       ...run,
       status: "succeeded",
       completedAt,
-      output: result.output
+      output:
+        result.finalOutput && typeof result.finalOutput === "object" && "data" in (result.finalOutput as Record<string, unknown>)
+          ? result.finalOutput as JobRun["output"]
+          : { data: result.finalOutput, artifacts: [] }
     };
 
     await this.jobRunRepository.update(completedRun);

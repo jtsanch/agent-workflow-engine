@@ -1,8 +1,8 @@
-import type { AgentDAG } from "@personal-agent-os/shared";
+import type { AgentDAG, NodeOutput } from "@personal-agent-os/shared";
 
 export class ExecutionState {
   private readonly initialInputs: Record<string, unknown>;
-  private readonly outputs = new Map<string, Record<string, unknown>>();
+  private readonly outputs = new Map<string, NodeOutput>();
   private readonly completed = new Set<string>();
   private readonly running = new Set<string>();
   private readonly retryCounts = new Map<string, number>();
@@ -16,11 +16,11 @@ export class ExecutionState {
     return this.initialInputs[key];
   }
 
-  getNodeOutput(nodeId: string): Record<string, unknown> | undefined {
+  getNodeOutput(nodeId: string): NodeOutput | undefined {
     return this.outputs.get(nodeId);
   }
 
-  store(nodeId: string, output: Record<string, unknown>): void {
+  store(nodeId: string, output: NodeOutput): void {
     this.outputs.set(nodeId, output);
     this.completed.add(nodeId);
     this.running.delete(nodeId);
@@ -63,7 +63,6 @@ export class ExecutionState {
   }
 
   isComplete(dag: AgentDAG): boolean {
-    return this.completed.has(dag.exitNodeId);
+    return dag.exitNodeIds.every(dId => this.completed.has(dId));
   }
 }
-

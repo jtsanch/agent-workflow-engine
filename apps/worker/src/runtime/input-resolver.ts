@@ -1,28 +1,56 @@
-import type { AgentNode } from "@personal-agent-os/shared";
-import { ExecutionState } from "./execution-state.js";
+import type { DataRef, InputBinding, NodeOutput } from "@personal-agent-os/shared";
+import type { ExecutionContext } from "@personal-agent-os/agent-sdk";
 
-function getByPath(source: Record<string, unknown>, path: string): unknown {
-  return path.split(".").reduce<unknown>((current, segment) => {
-    if (!current || typeof current !== "object" || Array.isArray(current)) {
-      return undefined;
+export function resolveInputBindings(
+    bindings: InputBinding[] | undefined,
+    context: ExecutionContext
+): Record<string, unknown> {
+    const result: Record<string, unknown> = {};
+    if (bindings === undefined) {
+        return result;
     }
-
-    return (current as Record<string, unknown>)[segment];
-  }, source);
+    for (const binding of bindings) {
+        const { key, ref, optional } = binding;
+        const val = resolveDataRef(ref, !!optional, context);
+        if (val !== undefined) {
+            result[key] = val;
+        }
+    }
+    return result;
 }
 
-export function resolveInputs(node: AgentNode, state: ExecutionState): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(node.inputMapping).map(([targetKey, sourcePath]) => {
-      if (sourcePath.startsWith("$job.")) {
-        return [targetKey, state.getJobInput(sourcePath.slice(5))];
-      }
+export function resolveDataRef(ref: DataRef, optional: boolean, context: ExecutionContext): unknown {
+    switch (ref.source) {
+        case "job_input":
+            return getByPath(context.jobInput, ref.path);
 
-      const [nodeId, ...rest] = sourcePath.split(".");
-      const output = state.getNodeOutput(nodeId) ?? {};
-      const value = rest.length === 0 ? output : getByPath(output, rest.join("."));
-      return [targetKey, value];
-    })
-  );
+        case "node_output": {
+            const nodeOutput = context.nodeOutputs?.[ref.nodeId] as NodeOutput | undefined;
+            if (!nodeOutput) {
+                console.log(`optional: ${optional}`);
+                if (!optional) {
+                    throw new Error(`Missing dependency: ${ref.nodeId}`);
+                }
+                return undefined;
+            }
+            return getByPath(nodeOutput.data, ref.path);
+        }
+
+        case "memory":
+            return context.memoryStore?.get(ref.key);
+
+        case "static":
+            return ref.value;
+
+        case "context":
+            return getByPath(context, ref.path);
+
+        default:
+            throw new Error(`Unknown DataRef source`);
+    }
 }
 
+function getByPath(obj: any, path?: string) {
+    if (!path) return obj;
+    return path.split(".").reduce((acc, key) => acc?.[key], obj);
+}

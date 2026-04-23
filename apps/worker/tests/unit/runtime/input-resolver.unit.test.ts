@@ -1,36 +1,41 @@
 import { describe, expect, it } from "vitest";
-import type { AgentNode } from "@personal-agent-os/shared";
-import { ExecutionState } from "../../../src/runtime/execution-state.js";
-import { resolveInputs } from "../../../src/runtime/input-resolver.js";
+import { resolveInputBindings } from "../../../src/runtime/input-resolver.js";
 
-describe("resolveInputs", () => {
+describe("resolveInputBindings", () => {
   it("resolves job inputs and nested upstream outputs", () => {
-    const state = new ExecutionState({
-      budget: 125,
-      zipcode: "94107"
-    });
-    state.store("research", {
-      result: {
-        text: "Fresh produce deals"
+    const resolved = resolveInputBindings(
+      [
+        { key: "zip", ref: { source: "job_input", path: "zipcode" } },
+        { key: "summary", ref: { source: "node_output", nodeId: "research", path: "result.text" } }
+      ],
+      {
+        jobInput: {
+          budget: 125,
+          zipcode: "94107"
+        },
+        nodeOutputs: {
+          research: {
+            data: {
+              result: {
+                text: "Fresh produce deals"
+              }
+            },
+            artifacts: []
+          }
+        },
+        registry: {
+          async execute() {
+            return {};
+          }
+        },
+        now: () => "2026-04-10T00:00:00.000Z",
+        logger: {
+          info: () => undefined
+        }
       }
-    });
+    );
 
-    const node: AgentNode = {
-      id: "planner",
-      type: "llm",
-      agentKey: "llm.generateText",
-      name: "Planner",
-      inputMapping: {
-        zip: "$job.zipcode",
-        summary: "research.result.text"
-      },
-      outputSchema: {
-        title: "Planner Output",
-        fields: [{ name: "text", type: "string", required: true }]
-      }
-    };
-
-    expect(resolveInputs(node, state)).toEqual({
+    expect(resolved).toEqual({
       zip: "94107",
       summary: "Fresh produce deals"
     });

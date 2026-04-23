@@ -41,6 +41,7 @@ export interface JobRunStepRepository {
 }
 
 export interface ToolInvocationRepository {
+  listByExecutionIds(nodeExecutionIds: string[]): Promise<ToolInvocation[]>;
   createMany(invocations: ToolInvocation[]): Promise<ToolInvocation[]>;
 }
 

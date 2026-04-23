@@ -5,6 +5,7 @@ import { jobsTable, jobRunsTable } from "../../db/schema/index.js";
 import { BaseRepository } from "../base-repository.js";
 import type { JobRunRepository } from "../interfaces.js";
 import { mapJobRun } from "./mappers.js";
+import { asNodeOutput } from "../sql-helpers.js";
 
 export class PostgresJobRunRepository extends BaseRepository implements JobRunRepository {
   constructor(db: PostgresDatabase) {
@@ -39,7 +40,7 @@ export class PostgresJobRunRepository extends BaseRepository implements JobRunRe
         triggerSource: run.triggerSource,
         startedAt: new Date(run.startedAt),
         completedAt: run.completedAt ? new Date(run.completedAt) : null,
-        output: run.output ?? null,
+        output: asNodeOutput(run.output) ?? null,
         errorMessage: run.errorMessage ?? null
       });
       return run;
@@ -53,7 +54,7 @@ export class PostgresJobRunRepository extends BaseRepository implements JobRunRe
         .set({
           status: run.status,
           completedAt: run.completedAt ? new Date(run.completedAt) : null,
-          output: run.output ?? null,
+          output: asNodeOutput(run.output) ?? null,
           errorMessage: run.errorMessage ?? null
         })
         .where(eq(jobRunsTable.id, run.id));

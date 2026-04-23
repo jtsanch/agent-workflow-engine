@@ -1,3 +1,4 @@
+import { inArray } from "drizzle-orm";
 import type { ToolInvocation } from "@personal-agent-os/shared";
 import type { PostgresDatabase } from "../../db/database.js";
 import { toolInvocationsTable } from "../../db/schema/index.js";
@@ -10,6 +11,21 @@ export class PostgresToolInvocationRepository extends BaseRepository implements 
     super(db);
   }
 
+  async listByExecutionIds(nodeExecutionIds: string[]): Promise<ToolInvocation[]> {
+    return this.exec("tool_invocations.list_by_execution_ids", async () => {
+      if (nodeExecutionIds.length === 0) {
+        return [];
+      }
+
+      const rows = await this.db
+        .select()
+        .from(toolInvocationsTable)
+        .where(inArray(toolInvocationsTable.nodeExecutionId, nodeExecutionIds));
+
+      return rows.map((row: unknown) => mapToolInvocation(row as Record<string, unknown>));
+    });
+  }
+
   async createMany(invocations: ToolInvocation[]): Promise<ToolInvocation[]> {
     return this.exec("tool_invocations.create_many", async () => {
       if (invocations.length === 0) {
@@ -19,7 +35,7 @@ export class PostgresToolInvocationRepository extends BaseRepository implements 
       await this.db.insert(toolInvocationsTable).values(
         invocations.map((invocation) => ({
           id: invocation.id,
-          jobRunStepId: invocation.jobRunStepId,
+          nodeExecutionId: invocation.nodeExecutionId,
           toolName: invocation.toolName,
           request: invocation.request,
           response: invocation.response ?? null,
@@ -32,7 +48,7 @@ export class PostgresToolInvocationRepository extends BaseRepository implements 
         mapToolInvocation({
           ...row,
           created_at: row.createdAt,
-          job_run_step_id: row.jobRunStepId,
+          node_execution_id: row.nodeExecutionId,
           tool_name: row.toolName
         })
       );

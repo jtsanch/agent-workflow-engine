@@ -1,5 +1,5 @@
 import type { ChatCompletionCreateParamsNonStreaming } from "openai/resources/chat/completions";
-import type { ExecutionContext } from "../types.js";
+import type {ExecutionContext, LLMInput, LLMOutput} from "../types.js";
 import { BaseTool } from "./base-tool.js";
 import { extractTextContent, getLlmModel, getOpenAiClient } from "./llm-client.js";
 import { DEFAULT_LLM_MAX_TOKENS_PER_CALL, trackLlmTokens } from "./llm-budget.js";
@@ -20,18 +20,20 @@ function normalizeMaxTokens(value: unknown): number {
   return Math.max(1, Math.floor(value));
 }
 
-export class LlmGenerateTextTool extends BaseTool {
+export class LlmGenerateTextTool extends BaseTool<"llm.generateText", LLMInput, LLMOutput> {
   readonly name = "llm.generateText";
   readonly description = "Generates structured or freeform text with OpenAI chat completions.";
 
-  protected async execute(input: Record<string, unknown>, context: ExecutionContext) {
-    const prompt =
-      typeof input.prompt === "string" && input.prompt.trim()
-        ? input.prompt
-        : `Generate workflow content using ${JSON.stringify(input)}`;
-    const system = typeof input.system === "string" ? input.system : undefined;
+  protected async execute(input: LLMInput, context: ExecutionContext): Promise<LLMOutput> {
+    const prompt = input.messages
+      .filter((message) => message.role === "user")
+      .map((message) => message.content)
+      .join("\n\n")
+      .trim();
     const temperature = normalizeTemperature(input.temperature);
     const maxTokens = normalizeMaxTokens(input.maxTokens);
+    const responseFormat = input.response?.type === "json" ? "json" : "text";
+    const model = input.model ?? getLlmModel();
 
     const liveOpenAiEnabled =
       process.env.OPENAI_API_KEY &&
@@ -42,22 +44,38 @@ export class LlmGenerateTextTool extends BaseTool {
         toolName: this.name
       });
       return this.stub({
-        text: `Mock response for prompt: ${prompt}`,
-        tokensUsed: 0,
-        provider: "mock"
+        text:
+          responseFormat === "json"
+            ? JSON.stringify({
+                summary: `Mock JSON response for prompt: ${prompt}`,
+                passed: true,
+                shouldRetry: false,
+                issues: [],
+                score: 1
+              })
+            : `Mock response for prompt: ${prompt}`,
+        usage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0
+        },
+        metadata: {
+          model,
+          provider: "mock"
+        }
       });
     }
 
     const request: ChatCompletionCreateParamsNonStreaming = {
-      model: getLlmModel(),
+      model,
       temperature,
-      messages: [
-        ...(system ? [{ role: "system" as const, content: system }] : []),
-        { role: "user" as const, content: prompt }
-      ]
+      messages: input.messages
     };
 
-    request.max_tokens = maxTokens;
+    request.max_completion_tokens = maxTokens;
+    if (responseFormat === "json") {
+      request.response_format = { type: "json_object" };
+    }
 
     const response = await this.withRetries(
       async () => getOpenAiClient().chat.completions.create(request),
@@ -69,15 +87,21 @@ export class LlmGenerateTextTool extends BaseTool {
         }
       }
     );
-
     const tokensUsed = response.usage?.total_tokens ?? 0;
     trackLlmTokens(context, tokensUsed);
 
     return {
       text: extractTextContent(response.choices[0]?.message.content ?? "").trim(),
-      tokensUsed,
-      provider: "openai",
-      model: response.model
+      usage: {
+        inputTokens: response.usage?.prompt_tokens ?? 0,
+        outputTokens: response.usage?.completion_tokens ?? 0,
+        totalTokens: tokensUsed
+      },
+      metadata: {
+        model: response.model,
+        provider: "openai",
+        finishReason: response.choices[0]?.finish_reason === "length" ? "length" : "stop"
+      }
     };
   }
 }

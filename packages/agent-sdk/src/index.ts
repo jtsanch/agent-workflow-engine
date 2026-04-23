@@ -3,4 +3,3 @@ export * from "./tool-registry.js";
 export * from "./tools/index.js";
 export * from "./tools/llm-budget.js";
 export * from "./definitions.js";
-export * from "./legacy-execution.js";

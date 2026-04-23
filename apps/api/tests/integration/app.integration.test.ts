@@ -24,7 +24,7 @@ describe("API integration", () => {
     expect(readyResponse.json()).toMatchObject({ ok: true, checks: { database: "ok" } });
   });
 
-  it("supports the job creation and run simulation vertical slice", async () => {
+  it("supports the job creation and run execution vertical slice", async () => {
     app = await buildApp(createInMemoryAppContext());
 
     const agentsResponse = await app.inject({ method: "GET", url: "/agents" });
@@ -35,17 +35,19 @@ describe("API integration", () => {
       method: "POST",
       url: "/jobs",
       payload: {
-        agentDefinitionKey: "weekly-grocery-planner",
-        dagId: "dag-weekly-grocery-planner",
-        name: "Weekly Grocery",
+        agentDefinitionKey: "grocery-planner",
+        dagId: "dag_grocery_planner",
+        name: "Grocery Planner",
         scheduleExpression: "cron(0 9 ? * SUN *)",
         timezone: "America/Los_Angeles",
         inputs: {
-          zipcode: "94107",
-          householdSize: 2,
-          budget: 100,
-          email: "demo@example.com",
-          dietStyle: "balanced"
+          preferences: {
+            days: 7,
+            servings: 2,
+            budgetUsd: 100,
+            dietaryTags: ["balanced"],
+            pantry: ["rice", "olive oil"]
+          }
         },
         alertPreferences: [
           {
@@ -67,7 +69,7 @@ describe("API integration", () => {
 
     const simulateRunResponse = await app.inject({
       method: "POST",
-      url: "/runs/simulate",
+      url: "/runs/execute",
       payload: { jobId: createdJob.id }
     });
 
@@ -77,7 +79,25 @@ describe("API integration", () => {
     const runsResponse = await app.inject({ method: "GET", url: "/runs" });
     expect(runsResponse.statusCode).toBe(200);
     expect(runsResponse.json().items).toHaveLength(1);
-    expect(runsResponse.json().items[0].steps.length).toBeGreaterThan(0);
+    expect(runsResponse.json().items[0].nodeExecutions.length).toBeGreaterThan(0);
+    expect(runsResponse.json().items[0].toolInvocations.length).toBeGreaterThan(0);
+  });
+
+  it("exposes store-aware search through the API", async () => {
+    app = await buildApp(createInMemoryAppContext());
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/search",
+      query: {
+        zipcode: "94107",
+        stores: "Trader Joe's,Costco",
+        category: "weekly grocery deals"
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().item.results.length).toBeGreaterThan(0);
   });
 
   it("returns a structured validation error for invalid payloads", async () => {
@@ -87,7 +107,7 @@ describe("API integration", () => {
       method: "POST",
       url: "/jobs",
       payload: {
-        agentDefinitionKey: "weekly-grocery-planner"
+        agentDefinitionKey: "grocery-planner"
       }
     });
 

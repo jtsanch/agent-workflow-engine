@@ -1,4 +1,4 @@
-import type { ExecutionContext } from "../types.js";
+import type {ExecutionContext, WebSearchInput, WebSearchOutput} from "../types.js";
 import { BaseTool } from "./base-tool.js";
 
 interface DuckDuckGoResponse {
@@ -25,19 +25,18 @@ function isFlatTopic(topic: DuckDuckGoFlatTopic | DuckDuckGoNestedTopicGroup): t
   return Boolean(topic) && typeof topic === "object" && ("Text" in topic || "FirstURL" in topic);
 }
 
-export class WebSearchTool extends BaseTool {
+export class WebSearchTool extends BaseTool<"web_search.search", WebSearchInput, WebSearchOutput> {
   readonly name = "web_search.search";
   readonly description = "Searches the web for public information via DuckDuckGo instant answers.";
 
-  protected async execute(input: Record<string, unknown>, context: ExecutionContext) {
-    const query = String(input.query ?? "").trim();
+  protected async execute(input: WebSearchInput, context: ExecutionContext): Promise<WebSearchOutput> {
+    const query = this.buildQuery(input);
     if (!query) {
-      return { query, results: [] };
+      return { results: [], metadata: { total: 0, provider: "none", latencyMs: 0 } };
     }
 
     if (process.env.NODE_ENV === "test" && process.env.WEB_SEARCH_ENABLE_LIVE_TESTS !== "true") {
       return this.stub({
-        query,
         results: [
           {
             title: "Weekly produce deals",
@@ -49,11 +48,17 @@ export class WebSearchTool extends BaseTool {
             url: "https://example.com/seasonal",
             snippet: "Mock seasonal ingredient guidance."
           }
-        ]
+        ],
+        metadata: {
+          total: 2,
+          provider: "duckduckgo",
+          latencyMs: 250
+        }
       });
     }
 
     try {
+      const startTime = new Date().getTime();
       const payload = await this.request<DuckDuckGoResponse>(
         {
           method: "GET",
@@ -69,13 +74,49 @@ export class WebSearchTool extends BaseTool {
         },
         { maxAttempts: 3 }
       );
+      const endTime = new Date().getTime();
 
       const results = this.extractResults(payload).slice(0, 5);
       context.logger.info("Web search completed", { query, resultCount: results.length });
-      return { query, results };
+      return {
+        results,
+        metadata: {
+          total: results.length,
+          provider: "duckduckgo",
+          latencyMs: endTime - startTime,
+        }
+      };
     } catch (error) {
       throw this.formatAxiosError(`Web search for "${query}"`, error);
     }
+  }
+
+  private buildQuery(input: WebSearchInput): string {
+    const explicitQuery = typeof input.query === "string" ? input.query.trim() : "";
+    if (explicitQuery) {
+      return explicitQuery;
+    }
+
+    const zipcode = typeof input.zipcode === "string" ? input.zipcode.trim() : "";
+    const category = typeof input.category === "string" && input.category.trim() ? input.category.trim() : "grocery deals";
+    const stores = this.normalizeStores(input.stores);
+
+    return [category, stores.join(" "), zipcode ? `near ${zipcode}` : ""].filter(Boolean).join(" ").trim();
+  }
+
+  private normalizeStores(value: WebSearchInput["stores"]): string[] {
+    if (Array.isArray(value)) {
+      return value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0).map((entry) => entry.trim());
+    }
+
+    if (typeof value === "string") {
+      return value
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+    }
+
+    return [];
   }
 
   private extractResults(payload: DuckDuckGoResponse): Array<{ title: string; url: string; snippet: string }> {

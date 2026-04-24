@@ -291,3 +291,9 @@ function collectFinalOutputs(
     dag.exitNodeIds.map((nodeId) => [nodeId, state.getNodeOutput(nodeId)?.data])
   );
 }
+
+export const __test__ = {
+  createFailureExecution,
+  executeNodesBatch,
+  scheduleRetries
+};

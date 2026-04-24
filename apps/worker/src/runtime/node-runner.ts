@@ -38,7 +38,7 @@ function renderTemplate(template: string, input: Record<string, unknown>): strin
   });
 }
 
-function schemaToExample(schema: JSONSchema | undefined): string {
+export function schemaToExample(schema: JSONSchema | undefined): string {
   if (!schema?.type) {
     return "{}";
   }
@@ -148,7 +148,7 @@ function toJsonObject(value: Record<string, unknown>): JsonObject {
   return value as JsonObject;
 }
 
-async function callLLM(
+export async function callLLM(
   prompt: string,
   options: {
     response_format: "json";
@@ -196,6 +196,11 @@ async function callLLM(
 
   return response;
 }
+
+export const __test__ = {
+  schemaToExample,
+  callLLM
+};
 
 export async function runLLMNode(
   node: LLMNode | EvaluatorNode,

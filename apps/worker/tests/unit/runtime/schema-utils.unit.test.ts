@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { JSONSchema } from "@personal-agent-os/shared";
-import { validateSchema } from "../../../src/runtime/schema-utils.js";
+import { __test__, validateSchema } from "../../../src/runtime/schema-utils.js";
 
 describe("validateSchema", () => {
   it.each([
@@ -47,5 +47,61 @@ describe("validateSchema", () => {
     message: string;
   }>)("rejects invalid values for $name schemas", ({ value, schema, message }) => {
     expect(() => validateSchema(value, schema)).toThrow(message);
+  });
+});
+
+describe("isCompatible", () => {
+  it("returns false when the schema types do not match", () => {
+    expect(
+      __test__.isCompatible(
+        { type: "string" },
+        { type: "number" }
+      )
+    ).toBe(false);
+  });
+
+  it("returns false when array item schemas are not compatible", () => {
+    expect(
+      __test__.isCompatible(
+        {
+          type: "array",
+          items: { type: "string" }
+        },
+        {
+          type: "array",
+          items: { type: "boolean" }
+        }
+      )
+    ).toBe(false);
+  });
+
+  it("returns false when object property schemas are not compatible", () => {
+    expect(
+      __test__.isCompatible(
+        {
+          type: "object",
+          properties: {
+            profile: {
+              type: "object",
+              properties: {
+                age: { type: "number" }
+              }
+            }
+          }
+        },
+        {
+          type: "object",
+          properties: {
+            profile: {
+              type: "object",
+              properties: {
+                age: { type: "string" }
+              }
+            }
+          },
+          required: ["profile"]
+        }
+      )
+    ).toBe(false);
   });
 });

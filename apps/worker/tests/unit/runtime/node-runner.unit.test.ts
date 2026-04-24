@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AgentNode } from "@personal-agent-os/shared";
-import { __test__, callLLM, runEvaluatorNode, runNode } from "../../../src/runtime/node-runner.js";
+import { __test__, callLLM, runEvaluatorNode, runLLMNode, runNode } from "../../../src/runtime/node-runner.js";
 
 const context = {
   now: () => "2026-04-10T00:00:00.000Z",
@@ -568,6 +568,84 @@ describe("schemaToExample", () => {
   it("falls back to an empty object when schema type is missing", () => {
     expect(__test__.schemaToExample(undefined)).toBe("{}");
   });
+
+  it("supports unknown schema types and empty objects", () => {
+    expect(__test__.schemaToExample({ type: "object" })).toBe("{}");
+    expect(__test__.schemaToExample({ type: "string" as never })).toBe('"example"');
+  });
+});
+
+describe("node-runner helpers", () => {
+  it("renders templates for nested, missing, and non-string values", () => {
+    expect(
+      __test__.renderTemplate("Name: {{user.name}} Count: {{count}} Missing: {{user.missing}}", {
+        user: { name: "Ava" },
+        count: 3
+      })
+    ).toBe('Name: Ava Count: 3 Missing: null');
+  });
+
+  it("extracts json candidates from fenced and prefixed responses", () => {
+    expect(__test__.extractJsonCandidate("```json\n{\"ok\":true}\n```")).toBe('{"ok":true}');
+    expect(__test__.extractJsonCandidate("Answer:\n{\"ok\":true}")).toBe('{"ok":true}');
+    expect(() => __test__.extractJsonCandidate("   ")).toThrow("LLM returned an empty response");
+  });
+
+  it("parses json and normalizes outputs", () => {
+    expect(__test__.safeJsonParse("```json\n{\"ok\":true}\n```")).toEqual({ ok: true });
+    expect(
+      __test__.normalizeOutput({
+        data: { ok: true },
+        artifacts: ["a"]
+      })
+    ).toEqual({
+      data: { ok: true },
+      artifacts: ["a"]
+    });
+    expect(__test__.normalizeOutput("plain text")).toEqual({
+      data: "plain text",
+      artifacts: []
+    });
+  });
+
+  it("builds mock values and feedback fallbacks for less common schema branches", () => {
+    expect(
+      __test__.mockValueFromSchema(
+        {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            passed: { type: "boolean" },
+            issues: { type: "array", items: { type: "string" } },
+            nullable: { type: "null" },
+            tags: { type: "array" }
+          }
+        },
+        {},
+        "Prompt body"
+      )
+    ).toEqual({
+      title: "Mock output for Prompt body",
+      passed: true,
+      issues: [],
+      nullable: null,
+      tags: []
+    });
+
+    expect(
+      __test__.buildFeedback(
+        "review",
+        {
+          score: 0.9,
+          passed: true,
+          issues: [],
+          summary: "Unused",
+          shouldRetry: false
+        },
+        "2026-04-10T00:00:00.000Z"
+      ).summary
+    ).toBe("Output passed evaluator review.");
+  });
 });
 
 describe("callLLM", () => {
@@ -662,6 +740,134 @@ describe("callLLM", () => {
           context: liveContext
         })
       ).rejects.toThrow("LLM returned a non-text response");
+    } finally {
+      if (openAiKey === undefined) {
+        delete process.env.OPENAI_API_KEY;
+      } else {
+        process.env.OPENAI_API_KEY = openAiKey;
+      }
+
+      if (liveTests === undefined) {
+        delete process.env.OPENAI_ENABLE_LIVE_TESTS;
+      } else {
+        process.env.OPENAI_ENABLE_LIVE_TESTS = liveTests;
+      }
+    }
+  });
+});
+
+describe("runLLMNode", () => {
+  it("retries after invalid json and succeeds on a later attempt", async () => {
+    const openAiKey = process.env.OPENAI_API_KEY;
+    const liveTests = process.env.OPENAI_ENABLE_LIVE_TESTS;
+    process.env.OPENAI_API_KEY = "test-key";
+    process.env.OPENAI_ENABLE_LIVE_TESTS = "true";
+
+    const execute = vi
+      .fn()
+      .mockResolvedValueOnce({
+        text: "{\"summaryText\":",
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        metadata: { model: "mock-model", provider: "mock-provider" }
+      })
+      .mockResolvedValueOnce({
+        text: "{\"summaryText\":\"Recovered\"}",
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        metadata: { model: "mock-model", provider: "mock-provider" }
+      });
+
+    const node: AgentNode = {
+      id: "draft",
+      version: "1.0.0",
+      type: "llm",
+      name: "Draft",
+      model: "gpt-test",
+      promptTemplate: "Return {{count}}",
+      output: {
+        schema: {
+          type: "object",
+          properties: {
+            summaryText: { type: "string" }
+          },
+          required: ["summaryText"],
+          additionalProperties: false
+        }
+      },
+      outputConfig: {
+        schema: {
+          type: "object",
+          properties: {
+            summaryText: { type: "string" }
+          }
+        },
+        enforcement: "strict"
+      }
+    };
+
+    try {
+      const result = await runLLMNode(node, { count: 2 }, { ...context, registry: { execute } });
+
+      expect(result.parsed).toEqual({ summaryText: "Recovered" });
+      expect(execute).toHaveBeenCalledTimes(2);
+    } finally {
+      if (openAiKey === undefined) {
+        delete process.env.OPENAI_API_KEY;
+      } else {
+        process.env.OPENAI_API_KEY = openAiKey;
+      }
+
+      if (liveTests === undefined) {
+        delete process.env.OPENAI_ENABLE_LIVE_TESTS;
+      } else {
+        process.env.OPENAI_ENABLE_LIVE_TESTS = liveTests;
+      }
+    }
+  });
+
+  it("fails when the llm returns a non-object payload three times", async () => {
+    const openAiKey = process.env.OPENAI_API_KEY;
+    const liveTests = process.env.OPENAI_ENABLE_LIVE_TESTS;
+    process.env.OPENAI_API_KEY = "test-key";
+    process.env.OPENAI_ENABLE_LIVE_TESTS = "true";
+
+    const execute = vi.fn().mockResolvedValue({
+      text: "[1,2,3]",
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      metadata: { model: "mock-model", provider: "mock-provider" }
+    });
+
+    const node: AgentNode = {
+      id: "draft",
+      version: "1.0.0",
+      type: "llm",
+      name: "Draft",
+      promptTemplate: "Return array",
+      output: {
+        schema: {
+          type: "object",
+          properties: {
+            summaryText: { type: "string" }
+          },
+          required: ["summaryText"],
+          additionalProperties: false
+        }
+      },
+      outputConfig: {
+        schema: {
+          type: "object",
+          properties: {
+            summaryText: { type: "string" }
+          }
+        },
+        enforcement: "strict"
+      }
+    };
+
+    try {
+      await expect(
+        runLLMNode(node, {}, { ...context, registry: { execute } })
+      ).rejects.toThrow("Failed to parse structured LLM output for draft");
+      expect(execute).toHaveBeenCalledTimes(3);
     } finally {
       if (openAiKey === undefined) {
         delete process.env.OPENAI_API_KEY;

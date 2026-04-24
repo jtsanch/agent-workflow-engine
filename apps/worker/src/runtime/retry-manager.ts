@@ -49,3 +49,7 @@ export function applyFeedbackRetry(
 
   return feedbackTargets;
 }
+
+export const __test__ = {
+  collectDownstreamNodeIds
+};

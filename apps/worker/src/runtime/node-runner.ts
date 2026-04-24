@@ -199,7 +199,13 @@ export async function callLLM(
 
 export const __test__ = {
   schemaToExample,
-  callLLM
+  callLLM,
+  renderTemplate,
+  extractJsonCandidate,
+  safeJsonParse,
+  mockValueFromSchema,
+  normalizeOutput,
+  buildFeedback
 };
 
 export async function runLLMNode(

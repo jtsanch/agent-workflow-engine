@@ -53,3 +53,7 @@ function getByPath(obj: any, path?: string) {
     if (!path) return obj;
     return path.split(".").reduce((acc, key) => acc?.[key], obj);
 }
+
+export const __test__ = {
+    getByPath
+};

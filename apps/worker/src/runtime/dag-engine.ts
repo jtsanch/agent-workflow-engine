@@ -295,5 +295,9 @@ function collectFinalOutputs(
 export const __test__ = {
   createFailureExecution,
   executeNodesBatch,
-  scheduleRetries
+  scheduleRetries,
+  getRunnableNodes,
+  collectOutputs,
+  collectToolInvocations,
+  collectFinalOutputs
 };

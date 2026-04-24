@@ -146,7 +146,10 @@ function isCompatible(fromSchema?: JSONSchema, toSchema?: JSONSchema): boolean {
 }
 
 export const __test__ = {
-  isCompatible
+  isCompatible,
+  getSchemaByPath,
+  lintSchema,
+  validateTransformNode
 };
 
 function lintSchema(schema?: JSONSchema, path: string[] = []): string[] {

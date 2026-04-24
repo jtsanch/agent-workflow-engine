@@ -143,7 +143,7 @@ describe("dag-engine helpers", () => {
         createTransformNode("c_child")
       ],
       edges: [
-        { id: "edge_1", from: "a_entry", to: "c_child" }
+        { id: "edge_1", from: "a_entry", to: "c_child", type: "data" }
       ],
       entryNodeIds: ["a_entry"],
       exitNodeIds: ["c_child"]

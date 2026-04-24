@@ -91,7 +91,7 @@ describe("retry-manager", () => {
         { id: "final", version: "1.0.0", type: "transform", name: "Final", run: () => ({}), output: { schema: { type: "object", additionalProperties: true } } }
       ],
       edges: [
-        { id: "a", from: "draft", to: "summary" },
+        { id: "a", from: "draft", to: "summary", type: "data" },
         { id: "b", from: "draft", to: "review", type: "data" },
         { id: "c", from: "summary", to: "final", type: "data" },
         { id: "d", from: "review", to: "final", type: "data" }
@@ -172,7 +172,7 @@ describe("retry-manager", () => {
         }
       ],
       edges: [
-        { id: "edge_draft_review", from: "draft", to: "reviewer" },
+        { id: "edge_draft_review", from: "draft", to: "reviewer", type: "data" },
         { id: "edge_draft_summary", from: "draft", to: "summary", type: "data" },
         { id: "edge_review_draft", from: "reviewer", to: "draft", type: "feedback" }
       ]

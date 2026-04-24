@@ -23,16 +23,17 @@ const userContext: UserContext = {
 };
 
 const createJobInput: CreateJobInput = {
-  agentDefinitionKey: "weekly-grocery-planner",
-  dagId: "dag-weekly-grocery-planner",
-  name: "Weekly Grocery",
+  agentDefinitionKey: "grocery-planner",
+  dagId: "dag_grocery_planner",
+  name: "Grocery Planner",
   scheduleExpression: "cron(0 9 ? * SUN *)",
   timezone: "America/Los_Angeles",
   inputs: {
-    zipcode: "94107",
-    email: "test@example.com",
-    householdSize: 2,
-    budget: 100
+    preferences: {
+      days: 7,
+      servings: 2,
+      budgetUsd: 100
+    }
   },
   alertPreferences: [
     {
@@ -45,7 +46,7 @@ const createJobInput: CreateJobInput = {
 };
 
 describe("RunsService", () => {
-  it("enqueues and simulates runs for an existing job", async () => {
+  it("enqueues and executes runs for an existing job", async () => {
     const database = new InMemoryDatabase(createSeedTables());
     const jobRepository = new InMemoryJobRepository(database);
     const agentCatalogService = new AgentCatalogService();
@@ -70,15 +71,15 @@ describe("RunsService", () => {
     );
 
     const queuedRun = await runsService.enqueueRun(createdJob.id);
-    const completedRun = await runsService.simulateRun(createdJob.id);
+    const completedRun = await runsService.executeRun(createdJob.id);
     const runs = await runsService.listRuns(userContext);
 
     expect(queuedRun.status).toBe("queued");
     expect(completedRun.status).toBe("succeeded");
-    expect(completedRun.output?.summary).toBeDefined();
+    expect(completedRun.output?.data).toBeDefined();
     expect(runs).toHaveLength(2);
-    expect(runs.some((run) => run.steps.length > 0)).toBe(true);
     expect(runs.some((run) => run.nodeExecutions.length > 0)).toBe(true);
+    expect(runs.some((run) => run.toolInvocations.length > 0)).toBe(true);
   });
 
   it("throws when enqueueing an unknown job", async () => {

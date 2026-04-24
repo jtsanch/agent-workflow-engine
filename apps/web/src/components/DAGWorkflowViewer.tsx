@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { ReactNode } from "react";
+import { Button } from "./Button.js";
 
 export type WorkflowNode = {
   id: string;
@@ -402,8 +403,8 @@ export function DAGWorkflowViewer({
 
           <div className="workflow-node-layer" style={{ width, height }}>
             {positionedNodes.map((node) => (
-              <button
-                type="button"
+              <Button
+                variant="subtle"
                 key={node.id}
                 className={`workflow-node ${getStatusClass(node.status)}${selectedNode?.id === node.id ? " workflow-node-selected" : ""}`}
                 style={{
@@ -417,7 +418,7 @@ export function DAGWorkflowViewer({
                 <strong>{node.title}</strong>
                 <span className="workflow-node-kind">{(node.kind ?? "transform").toLowerCase()}</span>
                 <span className="workflow-node-status">{node.status ?? "idle"}</span>
-              </button>
+              </Button>
             ))}
           </div>
         </div>

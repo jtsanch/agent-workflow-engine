@@ -1,4 +1,4 @@
-import { seedAgentDefinitions } from "@personal-agent-os/agent-sdk";
+import { seedAgentDefinitions } from "../../../../packages/agent-sdk/src/definitions.js";
 import type { AgentDefinition } from "@personal-agent-os/shared";
 
 export class AgentCatalogService {

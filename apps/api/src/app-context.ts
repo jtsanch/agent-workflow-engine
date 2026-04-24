@@ -31,6 +31,7 @@ import { AlertsService } from "./services/alerts-service.js";
 import { HealthService } from "./services/health-service.js";
 import { JobsService } from "./services/jobs-service.js";
 import { RunsService } from "./services/runs-service.js";
+import { SearchService } from "./services/search-service.js";
 
 export interface AppContext {
   config: AppConfig;
@@ -39,6 +40,7 @@ export interface AppContext {
   jobsService: JobsService;
   runsService: RunsService;
   alertsService: AlertsService;
+  searchService: SearchService;
   close(): Promise<void>;
 }
 
@@ -109,6 +111,7 @@ export function createAppContext(config: AppConfig): AppContext {
   );
   const alertsService = new AlertsService(jobRepository, alertPreferenceRepository);
   const healthService = new HealthService(database);
+  const searchService = new SearchService();
 
   return {
     config,
@@ -117,6 +120,7 @@ export function createAppContext(config: AppConfig): AppContext {
     jobsService,
     runsService,
     alertsService,
+    searchService,
     async close() {
       if (database.kind === "postgres") {
         await database.pool.end();

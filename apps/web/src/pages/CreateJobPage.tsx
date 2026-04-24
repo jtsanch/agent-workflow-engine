@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { AgentDefinition } from "@personal-agent-os/shared";
 import type { UiField } from "@personal-agent-os/ui-schema";
+import { Button } from "../components/Button.js";
 import { PageHeader } from "../components/PageHeader.js";
 import { DAGPreview } from "../components/DAGPreview.js";
 import { createJob, listAgents } from "../lib/api.js";
@@ -10,6 +11,22 @@ function getDefaultValue(field: UiField): string {
     return field.type === "boolean" ? "false" : "";
   }
   return String(field.defaultValue);
+}
+
+function setNestedValue(target: Record<string, unknown>, path: string, value: unknown): void {
+  const segments = path.split(".");
+  let current: Record<string, unknown> = target;
+
+  for (const segment of segments.slice(0, -1)) {
+    const existing = current[segment];
+    if (!existing || typeof existing !== "object" || Array.isArray(existing)) {
+      current[segment] = {};
+    }
+
+    current = current[segment] as Record<string, unknown>;
+  }
+
+  current[segments[segments.length - 1] as string] = value;
 }
 
 export function CreateJobPage() {
@@ -49,26 +66,31 @@ export function CreateJobPage() {
             return;
           }
 
-          const input = Object.fromEntries(
-            selectedAgent.uiSchema.sections.flatMap((section) =>
-              section.fields.map((field) => {
-                const rawValue = formState[field.name] ?? "";
-                if (field.type === "number") {
-                  return [field.name, Number(rawValue)];
-                }
-                if (field.type === "boolean") {
-                  return [field.name, rawValue === "true"];
-                }
-                return [field.name, rawValue];
-              })
-            )
-          );
+          const input: Record<string, unknown> = {};
+
+          for (const field of selectedAgent.uiSchema.sections.flatMap((section) => section.fields)) {
+            const rawValue = formState[field.name] ?? "";
+            let value: unknown = rawValue;
+
+            if (field.type === "number") {
+              value = Number(rawValue);
+            } else if (field.type === "boolean") {
+              value = rawValue === "true";
+            } else if (field.type === "textarea") {
+              value = rawValue
+                .split(/[\n,]/)
+                .map((entry) => entry.trim())
+                .filter(Boolean);
+            }
+
+            setNestedValue(input, field.name, value);
+          }
 
           await createJob({
             agentDefinitionKey: selectedAgent.key,
             dagId: selectedAgent.dag.id,
             name: `${selectedAgent.name} Job`,
-            scheduleExpression: selectedAgent.defaultSchedule,
+            scheduleExpression: selectedAgent.defaultSchedule ?? "cron(0 9 ? * SUN *)",
             timezone: "America/Los_Angeles",
             inputs: input,
             alertPreferences: [
@@ -81,7 +103,7 @@ export function CreateJobPage() {
             ]
           });
 
-          setMessage("Job created. Visit the Jobs page to simulate a run.");
+          setMessage("Job created. Visit the Jobs page to execute a run.");
         }}
       >
         <label>
@@ -160,7 +182,9 @@ export function CreateJobPage() {
 
         {selectedAgent ? <DAGPreview agentDefinition={selectedAgent} /> : null}
 
-        <button type="submit">Create Job</button>
+        <Button type="submit" variant="primary">
+          Create Job
+        </Button>
         {message ? <p className="success">{message}</p> : null}
       </form>
     </section>

@@ -9,15 +9,26 @@ export function registerRunsController(app: FastifyInstance, runsService: RunsSe
     return { items };
   });
 
+  app.get<{ Params: { runId: string } }>("/runs/:runId", async (request) => {
+    const item = await runsService.getRun(getUserContext(), request.params.runId);
+    return { item };
+  });
+
   app.post("/runs", async (request, reply) => {
     const input = simulateRunInputSchema.parse(request.body);
     const item = await runsService.enqueueRun(input.jobId);
     return reply.status(201).send({ item });
   });
 
+  app.post("/runs/execute", async (request, reply) => {
+    const input = simulateRunInputSchema.parse(request.body);
+    const item = await runsService.executeRun(input.jobId);
+    return reply.status(201).send({ item });
+  });
+
   app.post("/runs/simulate", async (request, reply) => {
     const input = simulateRunInputSchema.parse(request.body);
-    const item = await runsService.simulateRun(input.jobId);
+    const item = await runsService.executeRun(input.jobId);
     return reply.status(201).send({ item });
   });
 }

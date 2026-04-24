@@ -1,171 +1,549 @@
 import { defineAgent } from "./types.js";
-import type { AgentDefinition } from "@personal-agent-os/shared";
+import type { AgentDefinition, TransformNode } from "@personal-agent-os/shared";
 
-export const weeklyGroceryPlanner = defineAgent({
-  id: "agent-weekly-grocery-planner",
-  key: "weekly-grocery-planner",
-  version: "2.0.0",
-  name: "Weekly Grocery Planner",
-  description: "Plans a grocery week through a DAG of research, planning, and review nodes.",
+const extractIngredientsRun: TransformNode["run"] = async (input) => {
+  const meals = Array.isArray(input.meals) ? (input.meals as Array<{ ingredients?: unknown }>) : [];
+  const items = new Set<string>();
+
+  for (const meal of meals) {
+    const ingredients = Array.isArray(meal.ingredients) ? meal.ingredients : [];
+    for (const ingredient of ingredients) {
+      if (typeof ingredient === "string") {
+        items.add(ingredient.toLowerCase());
+      }
+    }
+  }
+
+  const normalizedItems = Array.from(items);
+
+  return {
+    items: normalizedItems,
+    searchQuery: normalizedItems.join(", ")
+  };
+};
+
+const finalizePlanRun: TransformNode["run"] = async (input) => {
+  return { plan: input.plan };
+};
+
+type Plan = {
+  meals: { name: string; estimatedCost: number }[];
+  groceryList: { item: string; quantity: number; estimatedCost: number }[];
+  totalEstimatedCost: number;
+};
+
+type ValidateMealPlanInput = {
+  plan: Plan;
+  budget: number;
+};
+
+type ValidateMealPlanOutput = {
+  valid: boolean;
+  shouldRetry: boolean;
+  issues: string[];
+  feedback: {
+    currentCost: number;
+    overBudgetBy?: number;
+  };
+};
+
+const validateMealPlanRun: TransformNode["run"] = (input) => {
+  const { plan, budget } = input as unknown as ValidateMealPlanInput;
+
+  const issues: string[] = [];
+  let overBudgetBy: number | undefined;
+
+  // --- Budget validation ---
+  if (typeof plan.totalEstimatedCost !== "number") {
+    issues.push("totalEstimatedCost must be a number");
+  } else if (plan.totalEstimatedCost > budget) {
+    overBudgetBy = plan.totalEstimatedCost - budget;
+    issues.push(
+        `Plan is over budget by ${overBudgetBy.toFixed(2)}`
+    );
+  }
+
+  // --- Structural validation ---
+  if (!Array.isArray(plan.meals) || plan.meals.length === 0) {
+    issues.push("Meals must be a non-empty array");
+  }
+
+  if (!Array.isArray(plan.groceryList) || plan.groceryList.length === 0) {
+    issues.push("Grocery list must be a non-empty array");
+  }
+
+  const feedback: ValidateMealPlanOutput["feedback"] = {
+    currentCost: plan.totalEstimatedCost
+  };
+
+  if (typeof overBudgetBy === "number") {
+    feedback.overBudgetBy = overBudgetBy;
+  }
+
+  return {
+    valid: issues.length === 0,
+    shouldRetry: issues.length > 0,
+    issues,
+    feedback
+  } satisfies ValidateMealPlanOutput;
+};
+
+export const groceryAgentDefinition: AgentDefinition = defineAgent({
+  id: "agent_grocery_planner",
+  key: "grocery-planner",
+  version: "1.0.0",
+  name: "Grocery Planner",
+  description:
+    "Generates a weekly meal plan, builds a grocery list, estimates cost, and optimizes to fit a budget.",
   inputSchema: {
-    title: "Weekly Grocery Input",
-    fields: [
-      { name: "householdSize", type: "number", required: true },
-      { name: "budget", type: "number", required: true },
-      { name: "zipcode", type: "string", required: true },
-      { name: "email", type: "string", required: true },
-      { name: "dietStyle", type: "string" },
-      { name: "notes", type: "string" }
-    ]
+    type: "object",
+    required: ["preferences"],
+    properties: {
+      preferences: {
+        type: "object",
+        required: ["days", "servings", "budgetUsd"],
+        properties: {
+          days: { type: "integer", minimum: 1, maximum: 14 },
+          servings: { type: "integer", minimum: 1 },
+          budgetUsd: { type: "number", minimum: 1 },
+          dietaryTags: {
+            type: "array",
+            items: { type: "string" }
+          },
+          allergies: {
+            type: "array",
+            items: { type: "string" }
+          },
+          pantry: {
+            type: "array",
+            items: { type: "string" }
+          }
+        }
+      }
+    }
   },
   uiSchema: {
     version: "1",
-    title: "Weekly Grocery Planner",
-    description: "Set preferences for a recurring grocery planning workflow.",
+    title: "Grocery Planner",
+    description: "Configure meal planning preferences and budget.",
     sections: [
       {
-        title: "Profile",
+        title: "Plan Preferences",
         fields: [
-          { name: "householdSize", label: "Household Size", type: "number", required: true, defaultValue: 2 },
-          { name: "budget", label: "Weekly Budget", type: "number", required: true, defaultValue: 125 },
-          { name: "zipcode", label: "Zip Code", type: "text", required: true, placeholder: "94107" },
-          { name: "email", label: "Delivery Email", type: "text", required: true, placeholder: "you@example.com" }
+          { name: "preferences.days", label: "Days", type: "number", required: true, defaultValue: 7 },
+          { name: "preferences.servings", label: "Servings", type: "number", required: true, defaultValue: 2 },
+          { name: "preferences.budgetUsd", label: "Budget ($)", type: "number", required: true, defaultValue: 100 }
         ]
       },
       {
-        title: "Preferences",
+        title: "Dietary Options",
         fields: [
           {
-            name: "dietStyle",
-            label: "Diet Style",
-            type: "select",
-            required: true,
-            options: [
-              { label: "Balanced", value: "balanced" },
-              { label: "Vegetarian", value: "vegetarian" },
-              { label: "High Protein", value: "high-protein" }
-            ],
-            defaultValue: "balanced"
-          },
-          {
-            name: "notes",
-            label: "Notes",
+            name: "preferences.dietaryTags",
+            label: "Dietary Tags",
             type: "textarea",
             required: false,
-            placeholder: "Exclude peanuts, prefer fast dinners..."
+            placeholder: "vegetarian, high-protein"
+          },
+          {
+            name: "preferences.allergies",
+            label: "Allergies",
+            type: "textarea",
+            required: false,
+            placeholder: "peanuts, shellfish"
+          },
+          {
+            name: "preferences.pantry",
+            label: "Pantry",
+            type: "textarea",
+            required: false,
+            placeholder: "rice, pasta, olive oil"
           }
         ]
       }
     ]
   },
   dag: {
-    id: "dag-weekly-grocery-planner",
+    id: "dag_grocery_planner",
     version: "1.0.0",
-    name: "Weekly Grocery Planning DAG",
-    entryNodeIds: ["deals_agent"],
-    exitNodeId: "reviewer",
+    name: "Grocery Planner DAG",
+    entryNodeIds: ["generateMeals"],
+    exitNodeIds: ["finalizePlan"],
     nodes: [
       {
-        id: "deals_agent",
-        type: "tool",
-        agentKey: "web_search.search",
-        name: "Deals Search",
-        description: "Finds grocery deals and seasonal ingredients.",
-        inputMapping: {
-          query: "$job.zipcode"
-        },
-        outputSchema: {
-          title: "Deals Output",
-          fields: [{ name: "results", type: "array", required: true }]
-        }
-      },
-      {
-        id: "nutrition_agent",
+        id: "generateMeals",
         type: "llm",
-        agentKey: "llm.generateText",
-        name: "Nutrition Planner",
-        inputMapping: {
-          prompt: "deals_agent.results"
-        },
-        outputSchema: {
-          title: "Nutrition Output",
-          fields: [{ name: "text", type: "string", required: true }]
-        }
-      },
-      {
-        id: "price_agent",
-        type: "llm",
-        agentKey: "llm.generateText",
-        name: "Price Planner",
-        inputMapping: {
-          prompt: "deals_agent.results"
-        },
-        outputSchema: {
-          title: "Price Output",
-          fields: [{ name: "text", type: "string", required: true }]
-        }
-      },
-      {
-        id: "meal_planner",
-        type: "llm",
-        agentKey: "llm.generateText",
-        name: "Meal Planner",
-        inputMapping: {
-          prompt: "nutrition_agent.text",
-          priceContext: "price_agent.text",
-          deals: "deals_agent.results",
-          notes: "$job.notes"
-        },
-        outputSchema: {
-          title: "Meal Plan",
-          fields: [{ name: "text", type: "string", required: true }]
-        }
-      },
-      {
-        id: "reviewer",
-        type: "evaluator",
-        agentKey: "reviewer",
-        name: "Plan Reviewer",
-        inputMapping: {
-          candidate: "meal_planner.text",
-          budget: "$job.budget"
-        },
-        outputSchema: {
-          title: "Review Output",
-          fields: [
-            { name: "score", type: "number", required: true },
-            { name: "shouldRetry", type: "boolean", required: true },
-            { name: "summary", type: "string", required: true }
+        name: "Generate Meals",
+        version: "1.0.0",
+        promptTemplate: `
+You are a meal planner.
+
+Generate meals for {{preferences.days}} days and {{preferences.servings}} servings.
+Respect dietaryTags and allergies.
+
+Return JSON:
+{
+  "meals": [
+    { "name": "...", "servings": number, "ingredients": ["..."] }
+  ]
+}
+`,
+        input: {
+          bindings: [
+            {
+              key: "preferences",
+              ref: { source: "job_input", path: "preferences" }
+            }
           ]
         },
-        retryPolicy: {
-          maxRetries: 1,
-          strategy: "feedback"
+        output: {
+          schema: {
+            type: "object",
+            required: ["meals"],
+            properties: {
+              meals: {
+                type: "array",
+                items: {
+                  type: "object",
+                  required: ["name", "servings", "ingredients"],
+                  properties: {
+                    name: { type: "string" },
+                    servings: { type: "number" },
+                    ingredients: {
+                      type: "array",
+                      items: { type: "string" }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          outputKind: "structured"
+        },
+        outputConfig: {
+          schema: {
+            type: "object",
+            required: ["meals"],
+            properties: {
+              meals: {
+                type: "array",
+                items: {
+                  type: "object",
+                  required: ["name", "servings", "ingredients"],
+                  properties: {
+                    name: { type: "string" },
+                    servings: { type: "number" },
+                    ingredients: {
+                      type: "array",
+                      items: { type: "string" }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          enforcement: "strict"
         }
+      },
+      {
+        id: "extractIngredients",
+        type: "transform",
+        name: "Extract Ingredients",
+        version: "1.0.0",
+        input: {
+          bindings: [
+            {
+              key: "meals",
+              ref: {
+                source: "node_output",
+                nodeId: "generateMeals",
+                path: "meals"
+              }
+            }
+          ]
+        },
+        output: {
+          schema: {
+            type: "object",
+            required: ["items", "searchQuery"],
+            properties: {
+              items: {
+                type: "array",
+                items: { type: "string" }
+              },
+              searchQuery: { type: "string" }
+            }
+          }
+        },
+        run: extractIngredientsRun
+      },
+      {
+        id: "priceLookup",
+        type: "tool",
+        name: "Lookup Prices",
+        version: "1.0.0",
+        toolName: "web_search.search",
+        input: {
+          bindings: [
+            {
+              key: "query",
+              ref: {
+                source: "node_output",
+                nodeId: "extractIngredients",
+                path: "searchQuery"
+              }
+            }
+          ]
+        },
+        output: {
+          schema: {
+            type: "object",
+            required: ["results"],
+            properties: {
+              results: {
+                type: "array",
+                items: {
+                  type: "object",
+                  required: ["title", "url", "snippet"],
+                  properties: {
+                    title: { type: "string" },
+                    url: { type: "string" },
+                    snippet: { type: "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        id: "optimizePlan",
+        type: "llm",
+        name: "Optimize Plan",
+        version: "1.0.0",
+        promptTemplate: `
+You are optimizing a meal plan to fit within a budget.
+
+Inputs:
+- meals (initial meal ideas)
+- prices (ingredient prices)
+- budget (number)
+- feedback (optional)
+
+Instructions:
+1. Generate a meal plan using the provided meals and prices
+2. Ensure totalEstimatedCost <= budget
+3. If feedback is provided:
+   - Fix ALL issues listed
+   - If overBudgetBy is present, reduce cost by at least that amount
+   - Prefer cheaper ingredients or fewer meals if needed
+   - Do NOT repeat the same plan
+
+Return STRICT JSON:
+
+{
+  "meals": [
+    {
+      "name": string,
+      "estimatedCost": number
+    }
+  ],
+  "groceryList": [
+    {
+      "item": string,
+      "quantity": number,
+      "estimatedCost": number
+    }
+  ],
+  "totalEstimatedCost": number,
+  "reasoning": string
+}
+`,
+        input: {
+          bindings: [
+            {
+              key: "meals",
+              ref: {
+                source: "node_output",
+                nodeId: "generateMeals",
+                path: "meals"
+              }
+            },
+            {
+              key: "prices",
+              ref: {
+                source: "node_output",
+                nodeId: "priceLookup",
+                path: "results"
+              }
+            },
+            {
+              key: "budget",
+              ref: { source: "job_input", path: "preferences.budgetUsd" }
+            },
+            {
+              key: "feedback",
+              optional: true,
+              ref: {
+                source: "node_output",
+                nodeId: "validatePlan",
+              }
+            }
+          ]
+        },
+        output: {
+          schema: {
+            type: "object",
+            required: ["meals", "groceryList", "totalEstimatedCost"],
+            properties: {
+              meals: {
+                type: "array",
+                items: {
+                  type: "object",
+                  required: ["name", "estimatedCost"],
+                  properties: {
+                    name: { type: "string" },
+                    estimatedCost: { type: "number" }
+                  }
+                }
+              },
+              groceryList: {
+                type: "array",
+                items: {
+                  type: "object",
+                  required: ["item", "quantity", "estimatedCost"],
+                  properties: {
+                    item: { type: "string" },
+                    quantity: { type: "number" },
+                    estimatedCost: { type: "number" }
+                  }
+                }
+              },
+              totalEstimatedCost: { type: "number" },
+              reasoning: { type: "string" }
+            }
+          }
+        },
+        outputConfig: {
+          schema: {
+            type: "object",
+            required: ["meals", "groceryList", "totalEstimatedCost"],
+            properties: {
+              meals: {
+                type: "array",
+                items: {
+                  type: "object",
+                  required: ["name", "estimatedCost"],
+                  properties: {
+                    name: { type: "string" },
+                    estimatedCost: { type: "number" }
+                  }
+                }
+              },
+              groceryList: {
+                type: "array",
+                items: {
+                  type: "object",
+                  required: ["item", "quantity", "estimatedCost"],
+                  properties: {
+                    item: { type: "string" },
+                    quantity: { type: "number" },
+                    estimatedCost: { type: "number" }
+                  }
+                }
+              },
+              totalEstimatedCost: { type: "number" },
+              reasoning: { type: "string" }
+            }
+          },
+          enforcement: "strict"
+        }
+      },
+      {
+        id: "validatePlan",
+        type: "transform",
+        name: "Validate Plan",
+        version: "1.0.0",
+        input: {
+          bindings: [
+            {
+              key: "plan",
+              ref: {
+                source: "node_output",
+                nodeId: "optimizePlan"
+              }
+            },
+            {
+              key: "budget",
+              ref: {
+                source: "job_input",
+                path: "preferences.budgetUsd"
+              }
+            }
+          ]
+        },
+        output: {
+          schema: {
+            type: "object",
+            required: ["valid", "shouldRetry", "issues"],
+            properties: {
+              valid: { type: "boolean" },
+              shouldRetry: { type: "boolean" },
+              issues: {
+                type: "array",
+                items: { type: "string" }
+              },
+              feedback: {
+                type: "object",
+                properties: {
+                  overBudgetBy: { type: "number" },
+                  currentCost: { type: "number" }
+                }
+              }
+            }
+          }
+        },
+        run: validateMealPlanRun
+      },
+      {
+        id: "finalizePlan",
+        type: "transform",
+        name: "Finalize Plan",
+        version: "1.0.0",
+        input: {
+          bindings: [
+            {
+              key: "plan",
+              ref: {
+                source: "node_output",
+                nodeId: "optimizePlan"
+              }
+            }
+          ]
+        },
+        output: {
+          schema: {
+            type: "object",
+            required: ["plan"],
+            properties: {
+              plan: { type: "object" }
+            }
+          }
+        },
+        run: finalizePlanRun
       }
     ],
     edges: [
-      { from: "deals_agent", to: "nutrition_agent", type: "data" },
-      { from: "deals_agent", to: "price_agent", type: "data" },
-      { from: "deals_agent", to: "meal_planner", type: "data" },
-      { from: "nutrition_agent", to: "meal_planner", type: "data" },
-      { from: "price_agent", to: "meal_planner", type: "data" },
-      { from: "meal_planner", to: "reviewer", type: "data" },
-      { from: "reviewer", to: "meal_planner", type: "feedback" }
+      { id: "e1", from: "generateMeals", to: "extractIngredients", type: "data" },
+      { id: "e2", from: "extractIngredients", to: "priceLookup", type: "data" },
+      { id: "e3", from: "priceLookup", to: "optimizePlan", type: "data" },
+      { id: "e4", from: "optimizePlan", to: "validatePlan", type: "data" },
+      { id: "e5", from: "validatePlan", to: "optimizePlan", type: "feedback" },
+      { id: "e6", from: "validatePlan", to: "finalizePlan", type: "data" }
     ]
-  },
-  defaultSchedule: "cron(0 9 ? * SUN *)",
-  alertPreferences: [
-    {
-      id: "agent-alert-weekly-grocery",
-      channel: "email",
-      destination: "demo@example.com",
-      onSuccess: true,
-      onFailure: true
-    }
-  ],
-  promptTemplate: "Prepare the grocery planning output for {{jobName}}.",
-  tags: ["shopping", "planning", "dag"]
+  }
 });
 
-export const seedAgentDefinitions: AgentDefinition[] = [weeklyGroceryPlanner];
+export const weeklyGroceryPlanner = groceryAgentDefinition;
+
+export const seedAgentDefinitions: AgentDefinition[] = [groceryAgentDefinition];

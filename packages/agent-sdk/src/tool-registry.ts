@@ -1,42 +1,57 @@
-import type { ExecutionContext, ToolDefinition } from "./types.js";
+import type {
+  ExecutionContext,
+  InputOf,
+  OutputOf,
+  ToolDefinition,
+  ToolMap,
+  ToolRegistry as ToolRegistryContract
+} from "./types.js";
 import { createDefaultTools } from "./tools/index.js";
 
-export class ToolRegistry {
-  private readonly tools = new Map<string, ToolDefinition>();
+type AnyToolDefinition = ToolDefinition<any, any>;
 
-  register(tool: ToolDefinition): void {
-    this.tools.set(tool.name, tool);
+export class DefaultToolRegistry<TTools extends Record<string, AnyToolDefinition> = ToolMap>
+implements ToolRegistryContract {
+  private readonly tools = new Map<keyof TTools, TTools[keyof TTools]>();
+
+  register<K extends keyof TTools & string>(tool: TTools[K] & { name: K }): void {
+    this.tools.set(tool.name, tool as TTools[keyof TTools]);
   }
 
-  get(toolName: string): ToolDefinition {
+  get<K extends keyof TTools>(toolName: K): TTools[K] {
     const tool = this.tools.get(toolName);
+
     if (!tool) {
-      throw new Error(`Unknown tool: ${toolName}`);
+      throw new Error(`Unknown tool: ${String(toolName)}`);
     }
 
-    return tool;
+    return tool as TTools[K];
   }
 
-  async execute(toolName: string, input: Record<string, unknown>, context: ExecutionContext): Promise<Record<string, unknown>> {
-    const tool = this.get(toolName);
-    return tool.run(input, context);
+  async execute(
+    toolName: string,
+    input: Record<string, unknown>,
+    context: ExecutionContext
+  ): Promise<unknown> {
+    const tool = this.get(toolName as keyof TTools);
+    return tool.run(input as InputOf<typeof tool>, context) as Promise<OutputOf<typeof tool>>;
   }
 
-  list(): ToolDefinition[] {
+  list(): Array<TTools[keyof TTools]> {
     return Array.from(this.tools.values());
   }
 }
 
-export function createToolRegistry(): ToolRegistry {
-  const registry = new ToolRegistry();
+export function createToolRegistry(): DefaultToolRegistry<ToolMap> {
+  const registry = new DefaultToolRegistry<ToolMap>();
   for (const tool of createDefaultTools()) {
-    registry.register(tool);
+    registry.register(tool as ToolMap[keyof ToolMap] & { name: keyof ToolMap & string });
   }
 
   return registry;
 }
 
-export function defineTool<TInput extends Record<string, unknown>, TOutput extends Record<string, unknown>>(
+export function defineTool<TInput extends object, TOutput extends object>(
   definition: ToolDefinition<TInput, TOutput>
 ): ToolDefinition<TInput, TOutput> {
   return definition;

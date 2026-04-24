@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import { Button } from "../components/Button.js";
 import { PageHeader } from "../components/PageHeader.js";
-import { listJobs, queueRun, simulateRun } from "../lib/api.js";
+import { executeRun, listJobs, queueRun } from "../lib/api.js";
 
 interface JobListItem {
   id: string;
@@ -41,22 +42,26 @@ export function JobsPage() {
               <span className={`status status-${job.status}`}>{job.status}</span>
             </div>
             <p>{job.schedule?.scheduleExpression ?? "No schedule found"}</p>
-            <button
-              onClick={async () => {
-                await queueRun(job.id);
-                await refresh();
-              }}
-            >
-              Queue Run
-            </button>
-            <button
-              onClick={async () => {
-                await simulateRun(job.id);
-                await refresh();
-              }}
-            >
-              Simulate Inline
-            </button>
+            <div className="job-card-actions">
+              <Button
+                variant="secondary"
+                onClick={async () => {
+                  await queueRun(job.id);
+                  await refresh();
+                }}
+              >
+                Queue Run
+              </Button>
+              <Button
+                variant="primary"
+                onClick={async () => {
+                  await executeRun(job.id);
+                  await refresh();
+                }}
+              >
+                Execute Run
+              </Button>
+            </div>
           </article>
         ))}
         {jobs.length === 0 ? <article className="card empty">No jobs created yet.</article> : null}

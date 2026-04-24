@@ -5,6 +5,7 @@ import { nodeExecutionsTable } from "../../db/schema/index.js";
 import { BaseRepository } from "../base-repository.js";
 import type { NodeExecutionRepository } from "../interfaces.js";
 import { mapNodeExecution } from "./mappers.js";
+import { asJsonObject, asNodeOutput } from "../sql-helpers.js";
 
 export class PostgresNodeExecutionRepository extends BaseRepository implements NodeExecutionRepository {
   constructor(db: PostgresDatabase) {
@@ -49,11 +50,15 @@ export class PostgresNodeExecutionRepository extends BaseRepository implements N
           jobRunId: execution.jobRunId,
           nodeId: execution.nodeId,
           nodeType: execution.nodeType,
+          nodeVersion: execution.nodeVersion,
           status: execution.status,
-          input: execution.input,
-          output: execution.output ?? null,
-          latencyMs: execution.latencyMs,
-          tokenUsage: execution.tokenUsage,
+          input: asJsonObject(execution.input ?? execution.resolvedInput),
+          resolvedInput: asJsonObject(execution.resolvedInput),
+          output: asNodeOutput(execution.output) ?? null,
+          errorMessage: execution.errorMessage ?? null,
+          latencyMs: execution.latencyMs ?? 0,
+          tokenUsage: execution.tokenUsage ?? 0,
+          costUsd: execution.costUsd?.toString() ?? null,
           retryCount: execution.retryCount,
           startedAt: new Date(execution.startedAt),
           completedAt: execution.completedAt ? new Date(execution.completedAt) : null

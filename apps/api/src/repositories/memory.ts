@@ -114,6 +114,11 @@ export class InMemoryJobRunStepRepository implements JobRunStepRepository {
 export class InMemoryToolInvocationRepository implements ToolInvocationRepository {
   constructor(private readonly db: InMemoryDatabase) {}
 
+  async listByExecutionIds(nodeExecutionIds: string[]): Promise<ToolInvocation[]> {
+    const executionIdSet = new Set(nodeExecutionIds);
+    return this.db.tables.toolInvocations.filter((invocation) => executionIdSet.has(invocation.nodeExecutionId));
+  }
+
   async createMany(invocations: ToolInvocation[]): Promise<ToolInvocation[]> {
     this.db.tables.toolInvocations.push(...invocations);
     return invocations;

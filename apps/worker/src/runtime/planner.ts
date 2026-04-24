@@ -7,7 +7,8 @@ export interface ExecutionPlan {
 
 export function planJob(agentDefinition: AgentDefinition, job: Job): ExecutionPlan {
   return {
-    prompt: (agentDefinition.promptTemplate ?? "Execute workflow for {{jobName}}").replace("{{jobName}}", job.name),
-    toolHints: agentDefinition.dag.nodes.map((node) => node.agentKey)
+    prompt: `Execute workflow "${agentDefinition.name}" for job "${job.name}"`,
+    toolHints: agentDefinition.dag.nodes
+      .map((node) => (node.type === "tool" ? node.toolName : node.type))
   };
 }

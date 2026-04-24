@@ -1,8 +1,8 @@
-import type { AgentDAG, AgentNode, NodeFeedback } from "@personal-agent-os/shared";
+import type { AgentDAG, AgentNode, EvaluatorNode, NodeFeedback } from "@personal-agent-os/shared";
 import { ExecutionState } from "./execution-state.js";
 
 function collectDownstreamNodeIds(dag: AgentDAG, startNodeId: string, visited = new Set<string>()): string[] {
-  const outgoing = dag.edges.filter((edge) => edge.type === "data" && edge.from === startNodeId).map((edge) => edge.to);
+  const outgoing = dag.edges.filter((edge) => (edge.type ?? "data") === "data" && edge.from === startNodeId).map((edge) => edge.to);
   for (const nodeId of outgoing) {
     if (visited.has(nodeId)) {
       continue;
@@ -14,26 +14,31 @@ function collectDownstreamNodeIds(dag: AgentDAG, startNodeId: string, visited = 
   return Array.from(visited);
 }
 
-export function shouldRetry(node: AgentNode, output: Record<string, unknown>, state: ExecutionState): boolean {
-  if (!node.retryPolicy) {
+export function shouldRetry(node: AgentNode, output: { data: unknown }, state: ExecutionState): boolean {
+  if (node.type !== "evaluator" || !node.execution?.retryPolicy) {
     return false;
   }
 
-  if (!output.shouldRetry) {
+  const critique =
+    output.data && typeof output.data === "object" && !Array.isArray(output.data)
+      ? output.data as Record<string, unknown>
+      : {};
+
+  if (!critique.shouldRetry) {
     return false;
   }
 
-  return state.getRetryCount(node.id) < node.retryPolicy.maxRetries;
+  return state.getRetryCount(node.id) < node.execution.retryPolicy.maxRetries;
 }
 
 export function applyFeedbackRetry(
   dag: AgentDAG,
-  evaluatorNode: AgentNode,
+  evaluatorNode: EvaluatorNode,
   feedback: NodeFeedback,
   state: ExecutionState
 ): string[] {
   const feedbackTargets = dag.edges
-    .filter((edge) => edge.type === "feedback" && edge.from === evaluatorNode.id)
+    .filter((edge) => (edge.type ?? "data") === "feedback" && edge.from === evaluatorNode.id)
     .map((edge) => edge.to);
 
   for (const targetNodeId of feedbackTargets) {
@@ -45,3 +50,6 @@ export function applyFeedbackRetry(
   return feedbackTargets;
 }
 
+export const __test__ = {
+  collectDownstreamNodeIds
+};

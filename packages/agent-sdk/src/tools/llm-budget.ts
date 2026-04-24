@@ -1,7 +1,7 @@
 import type { ExecutionContext, LlmBudget } from "../types.js";
 
-export const DEFAULT_LLM_RUN_BUDGET = 6000;
-export const DEFAULT_LLM_WARNING_THRESHOLD = 4500;
+export const DEFAULT_LLM_RUN_BUDGET = 5000;
+export const DEFAULT_LLM_WARNING_THRESHOLD = 2500;
 export const DEFAULT_LLM_MAX_TOKENS_PER_CALL = 800;
 
 export function createLlmBudget(): LlmBudget {

@@ -8,17 +8,18 @@ const userContext: UserContext = {
 };
 
 const createJobInput: CreateJobInput = {
-  agentDefinitionKey: "weekly-grocery-planner",
-  dagId: "dag-weekly-grocery-planner",
-  name: "Weekly Grocery",
+  agentDefinitionKey: "grocery-planner",
+  dagId: "dag_grocery_planner",
+  name: "Grocery Planner",
   scheduleExpression: "cron(0 9 ? * SUN *)",
   timezone: "America/Los_Angeles",
   inputs: {
-    zipcode: "94107",
-    householdSize: 2,
-    budget: 100,
-    email: "test@example.com",
-    dietStyle: "balanced"
+    preferences: {
+      days: 7,
+      servings: 2,
+      budgetUsd: 100,
+      dietaryTags: ["balanced"]
+    }
   },
   alertPreferences: [
     {
@@ -40,7 +41,7 @@ describe("service integration", () => {
     const job = await context.jobsService.createJob(createJobInput, userContext);
     const alerts = await context.alertsService.listAlerts(userContext);
     const queuedRun = await context.runsService.enqueueRun(job.id);
-    const completedRun = await context.runsService.simulateRun(job.id);
+    const completedRun = await context.runsService.executeRun(job.id);
     const runs = await context.runsService.listRuns(userContext);
     const readiness = await context.healthService.getReadiness();
 
@@ -48,7 +49,8 @@ describe("service integration", () => {
     expect(queuedRun.status).toBe("queued");
     expect(completedRun.status).toBe("succeeded");
     expect(runs).toHaveLength(2);
-    expect(runs.some((run) => run.steps.length > 0)).toBe(true);
+    expect(runs.some((run) => run.nodeExecutions.length > 0)).toBe(true);
+    expect(runs.some((run) => run.toolInvocations.length > 0)).toBe(true);
     expect(readiness).toEqual({
       ok: true,
       checks: {

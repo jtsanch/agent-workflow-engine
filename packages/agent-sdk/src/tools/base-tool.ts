@@ -7,11 +7,12 @@ export interface RetryOptions {
 }
 
 export abstract class BaseTool<
-  TInput extends Record<string, unknown> = Record<string, unknown>,
-  TOutput extends Record<string, unknown> = Record<string, unknown>
+  TName extends string,
+  TInput extends object = object,
+  TOutput extends object = object
 > implements ToolDefinition<TInput, TOutput>
 {
-  abstract readonly name: string;
+  abstract readonly name: TName;
   abstract readonly description: string;
 
   async run(input: TInput, context: ExecutionContext): Promise<TOutput> {

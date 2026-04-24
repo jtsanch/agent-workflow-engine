@@ -2,57 +2,230 @@ import type { UiFormSchema } from "@personal-agent-os/ui-schema";
 
 export type EntityId = string;
 export type Timestamp = string;
-
-export type JobStatus = "active" | "paused" | "disabled";
-export type JobRunStatus = "queued" | "running" | "succeeded" | "failed";
-export type JobRunStepStatus = "pending" | "running" | "succeeded" | "failed";
-export type AlertChannel = "email" | "slack" | "push";
-export type AgentNodeType = "llm" | "tool" | "evaluator" | "aggregator";
-export type AgentEdgeType = "data" | "feedback";
-
-export interface StructuredSchemaField {
-  name: string;
-  type: "string" | "number" | "boolean" | "object" | "array";
-  description?: string;
-  required?: boolean;
+export type JsonPrimitive = string | number | boolean | null;
+export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
+export interface JsonObject {
+  [key: string]: JsonValue;
 }
 
-export interface StructuredSchema {
-  title: string;
-  fields: StructuredSchemaField[];
+export type JobStatus = "active" | "paused" | "disabled";
+export type JobRunStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+export type NodeExecutionStatus =
+    | "pending"
+    | "running"
+    | "succeeded"
+    | "failed"
+    | "skipped"
+    | "retry_scheduled"
+    | "cancelled";
+
+export type AlertChannel = "email" | "slack" | "push";
+
+export type AgentNodeType =
+    | "llm"
+    | "tool"
+    | "transform"
+    | "evaluator"
+    | "condition";
+
+export type AgentEdgeType = "data" | "feedback" | "control" | "context";
+
+export type JsonSchemaType =
+    | "string"
+    | "number"
+    | "integer"
+    | "boolean"
+    | "object"
+    | "array"
+    | "null";
+
+export interface JSONSchema<T = unknown> {
+  $id?: string;
+  version?: string;
+  title?: string;
+  description?: string;
+  type?: JsonSchemaType | JsonSchemaType[];
+  properties?: Record<string, JSONSchema>;
+  required?: string[];
+  items?: JSONSchema;
+  additionalProperties?: boolean | JSONSchema;
+  enum?: readonly unknown[];
+  const?: unknown;
+  default?: unknown;
+  nullable?: boolean;
+  minItems?: number;
+  maxItems?: number;
+  minimum?: number;
+  maximum?: number;
+  minLength?: number;
+  maxLength?: number;
+  format?: string;
+  oneOf?: JSONSchema[];
+  anyOf?: JSONSchema[];
+  allOf?: JSONSchema[];
+  definitions?: Record<string, JSONSchema>;
+}
+
+export interface SchemaRef {
+  id: string;
+  version: string;
 }
 
 export interface RetryPolicy {
   maxRetries: number;
-  strategy: "feedback" | "replan";
+  strategy: "regenerate" | "rerun" | "feedback_adjust";
+  backoffMs?: number;
 }
 
-export interface AgentNode {
+export interface CachePolicy {
+  enabled: boolean;
+  keyTemplate?: string;
+  ttlSeconds?: number;
+}
+
+export interface ExecutionPolicy {
+  timeoutMs?: number;
+  retryPolicy?: RetryPolicy;
+  cachePolicy?: CachePolicy;
+  concurrencyKey?: string;
+  priority?: number;
+}
+
+export type DataRef =
+    | { source: "job_input"; path?: string }
+    | { source: "node_output"; nodeId: string; path?: string }
+    | { source: "memory"; key: string; path?: string }
+    | { source: "static"; value: JsonValue }
+    | { source: "context"; path: string };
+
+export interface InputBinding {
+  key: string;
+  ref: DataRef;
+  optional?: boolean;
+}
+
+export interface NodeOutput<TOutput = unknown> {
+  data: TOutput;
+  artifacts: unknown[];
+}
+
+export interface OutputContract<TOutput = JsonObject> {
+  schema: JSONSchema<TOutput>;
+  outputKind?: "structured" | "text" | "decision" | "critique";
+}
+
+export interface BaseNode<TInput = JsonObject, TOutput = JsonObject> {
   id: string;
+  version: string;
   type: AgentNodeType;
-  agentKey: string;
   name: string;
   description?: string;
-  inputMapping: Record<string, string>;
-  outputSchema: StructuredSchema;
-  config?: Record<string, unknown>;
-  retryPolicy?: RetryPolicy;
+  deterministic?: boolean;
+  input?: {
+    schema?: JSONSchema<TInput>;
+    bindings?: InputBinding[];
+  };
+  memory?: MemoryWrite[];
+  output: OutputContract<TOutput>;
+  execution?: ExecutionPolicy;
+  tags?: string[];
 }
 
+export type MemoryWrite = {
+  key: string;
+  from: string;
+  operation?: "set" | "append";
+  scope?: "job" | "user" | "global";
+}
+
+export interface ToolNode<TInput = JsonObject, TOutput = JsonObject>
+    extends BaseNode<TInput, TOutput> {
+  type: "tool";
+  toolName: string;
+}
+
+export interface TransformNode<TInput = JsonObject, TOutput = JsonObject>
+    extends BaseNode<TInput, TOutput> {
+  type: "transform";
+  run: (
+    input: TInput,
+    context: unknown,
+  ) => Promise<TOutput> | TOutput;
+}
+
+export interface LLMOutputConfig<TOutput = JsonObject> {
+  schema: JSONSchema<TOutput>;
+  enforcement: "strict" | "best_effort";
+}
+
+export interface LLMNode<TInput = JsonObject, TOutput = JsonObject>
+    extends BaseNode<TInput, TOutput> {
+  type: "llm";
+  promptTemplate: string;
+  model?: string;
+  temperature?: number;
+  maxTokens?: number;
+  outputConfig: LLMOutputConfig<TOutput>;
+}
+
+export interface EvaluationSignal {
+  retry: boolean;
+  strategy?: "regenerate" | "rerun" | "feedback_adjust";
+  targetNodeId?: string;
+}
+
+export interface EvaluationResult {
+  score: number;
+  passed: boolean;
+  issues: string[];
+  summary: string;
+  shouldRetry: boolean;
+  signal?: EvaluationSignal;
+}
+
+export interface EvaluatorNode<TInput = JsonObject>
+    extends BaseNode<TInput, EvaluationResult> {
+  type: "evaluator";
+  promptTemplate: string;
+  model?: string;
+  temperature?: number;
+}
+
+export interface ConditionBranch {
+  toNodeId: string;
+}
+
+export interface ConditionNode<TInput = JsonObject>
+    extends BaseNode<TInput, { selectedBranch: string }> {
+  type: "condition";
+  branches?: ConditionBranch[];
+  defaultToNodeId?: string;
+}
+
+export type AgentNode =
+    | ToolNode
+    | TransformNode
+    | LLMNode
+    | EvaluatorNode
+    | ConditionNode;
+
 export interface AgentEdge {
+  id: string;
   from: string;
   to: string;
   type: AgentEdgeType;
+  label?: string;
 }
 
 export interface AgentDAG {
   id: string;
   version: string;
   name: string;
+  description?: string;
   nodes: AgentNode[];
   edges: AgentEdge[];
   entryNodeIds: string[];
-  exitNodeId: string;
+  exitNodeIds: string[];
 }
 
 export interface AlertPreference {
@@ -70,13 +243,13 @@ export interface AgentDefinition {
   version: string;
   name: string;
   description: string;
-  inputSchema: StructuredSchema;
+  inputSchema: JSONSchema;
   uiSchema: UiFormSchema;
   dag: AgentDAG;
-  defaultSchedule: string;
-  alertPreferences: AlertPreference[];
+  defaultSchedule?: string;
+  alertPreferences?: AlertPreference[];
   promptTemplate?: string;
-  tags: string[];
+  tags?: string[];
 }
 
 export interface Job {
@@ -86,7 +259,7 @@ export interface Job {
   dagId: string;
   agentDefinitionKey?: string;
   status: JobStatus;
-  inputs: Record<string, unknown>;
+  inputs: JsonObject;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -101,6 +274,13 @@ export interface JobSchedule {
   updatedAt: Timestamp;
 }
 
+export interface JobRunBudget {
+  maxTokens?: number;
+  consumedTokens?: number;
+  maxCostUsd?: number;
+  consumedCostUsd?: number;
+}
+
 export interface JobRun {
   id: EntityId;
   jobId: EntityId;
@@ -108,43 +288,49 @@ export interface JobRun {
   triggerSource: "manual" | "schedule" | "api";
   startedAt: Timestamp;
   completedAt?: Timestamp;
-  output?: Record<string, unknown>;
+  output?: NodeOutput;
   errorMessage?: string;
+  budget?: JobRunBudget;
 }
 
 export interface JobRunStep {
   id: EntityId;
   jobRunId: EntityId;
   name: string;
-  status: JobRunStepStatus;
+  status: "pending" | "running" | "succeeded" | "failed" | "cancelled";
   startedAt: Timestamp;
   completedAt?: Timestamp;
-  detail?: Record<string, unknown>;
-}
-
-export interface ToolInvocation {
-  id: EntityId;
-  jobRunStepId: EntityId;
-  toolName: string;
-  request: Record<string, unknown>;
-  response?: Record<string, unknown>;
-  status: "pending" | "succeeded" | "failed";
-  createdAt: Timestamp;
+  detail?: JsonValue;
 }
 
 export interface NodeExecution {
   id: EntityId;
   jobRunId: EntityId;
   nodeId: string;
+  nodeVersion: string;
   nodeType: AgentNodeType;
-  status: "running" | "succeeded" | "failed" | "retry_scheduled";
-  input: Record<string, unknown>;
-  output?: Record<string, unknown>;
-  latencyMs: number;
-  tokenUsage: number;
+  status: NodeExecutionStatus;
+  input?: JsonObject;
+  resolvedInput: Record<string, unknown>;
+  output?: NodeOutput;
+  errorMessage?: string;
+  latencyMs?: number;
+  tokenUsage?: number;
+  costUsd?: number;
   retryCount: number;
   startedAt: Timestamp;
   completedAt?: Timestamp;
+}
+
+export interface ToolInvocation {
+  id: EntityId;
+  nodeExecutionId: EntityId;
+  toolName: string;
+  toolVersion?: string;
+  request: JsonObject;
+  response?: JsonObject;
+  status: "pending" | "succeeded" | "failed";
+  createdAt: Timestamp;
 }
 
 export interface NodeFeedback {
@@ -158,13 +344,16 @@ export interface NodeFeedback {
   createdAt: Timestamp;
 }
 
-export interface JobMemory {
+export interface JobMemoryEntry {
   id: EntityId;
   jobId: EntityId;
   key: string;
-  value: Record<string, unknown>;
+  value: JsonValue;
+  nodeId?: string;
   updatedAt: Timestamp;
 }
+
+export type JobMemory = JobMemoryEntry;
 
 export interface FeedbackEvent {
   id: EntityId;
@@ -177,6 +366,6 @@ export interface FeedbackEvent {
 
 export interface UserContext {
   userId: string;
-  email: string;
+  email?: string;
+  timezone?: string;
 }
-

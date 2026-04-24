@@ -3,19 +3,21 @@ import type { Job } from "@personal-agent-os/shared";
 import { runJob } from "../../../src/runtime/job-runner.js";
 
 describe("runJob integration", () => {
-  it("executes a DAG-backed job and returns evaluation, memory, and node telemetry", async () => {
+  it("executes a DAG-backed job and returns execution telemetry", async () => {
     const job: Job = {
       id: "job_weekly_grocery",
       userId: "user_test",
       name: "Weekly Grocery",
-      dagId: "dag-weekly-grocery-planner",
-      agentDefinitionKey: "weekly-grocery-planner",
+      dagId: "dag_grocery_planner",
+      agentDefinitionKey: "grocery-planner",
       status: "active",
       inputs: {
-        zipcode: "94107",
-        budget: 100,
-        email: "demo@example.com",
-        householdSize: 2
+        preferences: {
+          days: 7,
+          servings: 2,
+          budgetUsd: 100,
+          dietaryTags: ["balanced"]
+        }
       },
       createdAt: "2026-04-10T00:00:00.000Z",
       updatedAt: "2026-04-10T00:00:00.000Z"
@@ -23,21 +25,24 @@ describe("runJob integration", () => {
 
     const execution = await runJob(job);
 
-    expect(execution.result.output).toMatchObject({
-      score: expect.any(Number),
-      shouldRetry: expect.any(Boolean),
-      summary: expect.any(String)
-    });
-    expect(execution.evaluation).toMatchObject({
-      score: expect.any(Number),
-      summary: expect.any(String)
-    });
-    expect(execution.memory).toMatchObject({
-      jobId: job.id,
-      key: "latest-output"
+    expect(execution.finalOutput).toMatchObject({
+      plan: {
+        meals: expect.any(Array),
+        groceryList: expect.any(Array),
+        totalEstimatedCost: expect.any(Number)
+      }
     });
     expect(execution.nodeExecutions.length).toBeGreaterThan(0);
-    expect(execution.nodeFeedback.length).toBeGreaterThan(0);
+    expect(execution.nodeFeedback).toEqual([]);
+    expect(execution.toolInvocations.length).toBeGreaterThan(0);
+    expect(execution.toolInvocations[0]).toMatchObject({
+      nodeExecutionId: expect.any(String),
+      toolName: expect.any(String),
+      request: expect.any(Object),
+      status: "succeeded",
+      createdAt: expect.any(String)
+    });
+    expect(execution.memoryWrites).toEqual([]);
   });
 
   it("fails fast when the job references an unknown workflow", async () => {

@@ -7,6 +7,7 @@ import { registerAgentsController } from "./modules/agents/controller.js";
 import { registerJobsController } from "./modules/jobs/controller.js";
 import { registerRunsController } from "./modules/runs/controller.js";
 import { registerAlertsController } from "./modules/alerts/controller.js";
+import { registerSearchController } from "./modules/search/controller.js";
 
 export async function buildApp(context: AppContext): Promise<FastifyInstance> {
   const app = await createHttpApp();
@@ -16,6 +17,7 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
   registerJobsController(app, context.jobsService);
   registerRunsController(app, context.runsService);
   registerAlertsController(app, context.alertsService);
+  registerSearchController(app, context.searchService);
   registerErrorHandlers(app);
 
   app.addHook("onClose", async () => {
@@ -24,4 +26,3 @@ export async function buildApp(context: AppContext): Promise<FastifyInstance> {
 
   return app;
 }
-

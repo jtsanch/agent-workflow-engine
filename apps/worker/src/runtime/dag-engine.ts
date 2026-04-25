@@ -1,10 +1,36 @@
 import type { AgentDAG, AgentNode, JsonObject, NodeExecution, NodeFeedback, NodeOutput, ToolInvocation } from "@personal-agent-os/shared";
-import type { ExecutionContext } from "@personal-agent-os/agent-sdk";
+import type { ExecutionContext as BaseExecutionContext } from "../../../../packages/agent-sdk/src/types.js";
+import { deepFreeze } from "./deep-freeze.js";
 import { ExecutionState } from "./execution-state.js";
 import { resolveInputBindings } from "./input-resolver.js";
+import { mergeWorkingState } from "./merge-working-state.js";
 import { runNode } from "./node-runner.js";
-import { applyFeedbackRetry, shouldRetry } from "./retry-manager.js";
+import { applyEvaluatorRetry, shouldRetry } from "./retry-manager.js";
 import { validateDag } from "./schema-utils.js";
+
+type WorkingState = {
+  data: Record<string, unknown>;
+  diagnostics: {
+    usedFallbacks: string[];
+    warnings: string[];
+    constraintResults: Record<string, boolean>;
+    signals: Record<string, unknown>;
+  };
+};
+
+type ExecutionContext = BaseExecutionContext & { workingState: WorkingState };
+
+function createInitialWorkingState(): WorkingState {
+  return deepFreeze({
+    data: {},
+    diagnostics: {
+      usedFallbacks: [],
+      warnings: [],
+      constraintResults: {},
+      signals: {}
+    }
+  });
+}
 
 export class DAGExecutionError extends Error {
   constructor(
@@ -93,6 +119,25 @@ type ExecutedNodeResult = {
   result: Awaited<ReturnType<typeof runNode>>;
 };
 
+function assertNoWriteConflicts(nodes: AgentNode[]): void {
+  const writesByField = new Map<string, string[]>();
+
+  for (const node of nodes) {
+    const writes = (node as AgentNode & { writes?: string[] }).writes ?? [];
+    for (const field of writes) {
+      const nodeIds = writesByField.get(field) ?? [];
+      nodeIds.push(node.id);
+      writesByField.set(field, nodeIds);
+    }
+  }
+
+  for (const [field, nodeIds] of writesByField.entries()) {
+    if (nodeIds.length > 1) {
+      throw new Error(`Write conflict on field "${field}" between nodes: ${nodeIds.join(", ")}`);
+    }
+  }
+}
+
 async function executeNodesBatch(
   runnableNodes: AgentNode[],
   jobRunId: string,
@@ -101,6 +146,7 @@ async function executeNodesBatch(
   nodeExecutions: NodeExecution[],
   nodeFeedback: NodeFeedback[]
 ): Promise<ExecutedNodeResult[]> {
+  assertNoWriteConflicts(runnableNodes);
   const executedNodes: ExecutedNodeResult[] = [];
 
   for (const node of runnableNodes) {
@@ -138,6 +184,7 @@ function collectOutputs(
     state.store(node.id, result.output);
     context.nodeOutputs = context.nodeOutputs ?? {};
     context.nodeOutputs[node.id] = result.output;
+    context.workingState = mergeWorkingState(context.workingState, result);
 
     if (result.feedback) {
       nodeFeedback.push(result.feedback);
@@ -148,20 +195,23 @@ function collectOutputs(
 function scheduleRetries(
   dag: AgentDAG,
   executedNodes: ExecutedNodeResult[],
-  state: ExecutionState
+  state: ExecutionState,
+  context: ExecutionContext
 ): void {
   for (const { node, result } of executedNodes) {
     if (node.type !== "evaluator" || !result.feedback) {
       continue;
     }
 
-    if (!shouldRetry(node, result.output, state)) {
+    if (!shouldRetry(node, result.output)) {
       continue;
     }
 
-    const feedbackTargets = applyFeedbackRetry(dag, node, result.feedback, state);
-    if (feedbackTargets[0]) {
-      result.feedback.targetNodeId = feedbackTargets[0];
+    const resetNodeIds = applyEvaluatorRetry(dag, node, result.output, result.feedback, state);
+    if (resetNodeIds.length > 0 && context.nodeOutputs) {
+      for (const nodeId of resetNodeIds) {
+        delete context.nodeOutputs[nodeId];
+      }
     }
   }
 }
@@ -251,6 +301,7 @@ export async function executeDAG(
   const nodeFeedback: NodeFeedback[] = [];
   context.jobInput = initialInputs;
   context.nodeOutputs = {};
+  context.workingState = createInitialWorkingState();
 
   while (!state.isComplete(dag)) {
     const runnableNodes = getRunnableNodes(dag, state);
@@ -268,7 +319,7 @@ export async function executeDAG(
     );
 
     collectOutputs(executedNodes, state, context, nodeExecutions, nodeFeedback);
-    scheduleRetries(dag, executedNodes, state);
+    scheduleRetries(dag, executedNodes, state, context);
   }
 
   return {
@@ -294,10 +345,12 @@ function collectFinalOutputs(
 
 export const __test__ = {
   createFailureExecution,
+  assertNoWriteConflicts,
   executeNodesBatch,
   scheduleRetries,
   getRunnableNodes,
   collectOutputs,
   collectToolInvocations,
-  collectFinalOutputs
+  collectFinalOutputs,
+  createInitialWorkingState
 };

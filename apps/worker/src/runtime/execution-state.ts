@@ -55,6 +55,7 @@ export class ExecutionState {
       this.completed.delete(nodeId);
       this.outputs.delete(nodeId);
       this.running.delete(nodeId);
+      this.retryQueue.delete(nodeId);
     }
   }
 

@@ -1,6 +1,16 @@
-import type { AgentDefinition, NodeOutput } from "@personal-agent-os/shared";
+import type { AgentDefinition, NodeOutput } from "../../shared/src/domain/types.js";
 
 export type UnknownObject = { [key: string]: unknown };
+
+export interface WorkingState {
+  data: Record<string, unknown>;
+  diagnostics: {
+    usedFallbacks: string[];
+    warnings: string[];
+    constraintResults: Record<string, boolean>;
+    signals: Record<string, unknown>;
+  };
+}
 
 export interface LlmBudget {
   maxTokens: number;
@@ -21,6 +31,7 @@ export interface ExecutionContext {
   jobInput?: Record<string, unknown>;
   registry: ToolRegistry;
   nodeOutputs?: Record<string, NodeOutput>;
+  workingState: WorkingState;
   memoryStore?: {};
   now: () => string;
   logger: {

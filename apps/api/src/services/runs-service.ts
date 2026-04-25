@@ -1,5 +1,5 @@
 import { createLlmBudget } from "../../../../packages/agent-sdk/src/tools/llm-budget.js";
-import type { ExecutionContext } from "../../../../packages/agent-sdk/src/types.js";
+import type { ExecutionContext as BaseExecutionContext } from "../../../../packages/agent-sdk/src/types.js";
 import type { JobRun, NodeExecution, NodeFeedback, ToolInvocation, UserContext } from "@personal-agent-os/shared";
 import type {
   JobMemoryRepository,
@@ -22,6 +22,18 @@ export type HydratedRun = JobRun & {
   nodeExecutions: NodeExecution[];
   nodeFeedback: NodeFeedback[];
 };
+
+type WorkingState = {
+  data: Record<string, unknown>;
+  diagnostics: {
+    usedFallbacks: string[];
+    warnings: string[];
+    constraintResults: Record<string, boolean>;
+    signals: Record<string, unknown>;
+  };
+};
+
+type ExecutionContext = BaseExecutionContext & { workingState: WorkingState };
 
 export class RunsService {
   constructor(
@@ -126,6 +138,15 @@ export class RunsService {
       registry: createDefaultToolRegistry(),
       jobInput: job.inputs,
       nodeOutputs: {},
+      workingState: {
+        data: {},
+        diagnostics: {
+          usedFallbacks: [],
+          warnings: [],
+          constraintResults: {},
+          signals: {}
+        }
+      },
       now: () => new Date().toISOString(),
       logger: { info: () => undefined },
       llmBudget: createLlmBudget()

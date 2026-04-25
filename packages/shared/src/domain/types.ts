@@ -8,6 +8,16 @@ export interface JsonObject {
   [key: string]: JsonValue;
 }
 
+export interface WorkingState {
+  data: Record<string, unknown>;
+  diagnostics: {
+    usedFallbacks: string[];
+    warnings: string[];
+    constraintResults: Record<string, boolean>;
+    signals: Record<string, unknown>;
+  };
+}
+
 export type JobStatus = "active" | "paused" | "disabled";
 export type JobRunStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
 export type NodeExecutionStatus =
@@ -121,6 +131,7 @@ export interface BaseNode<TInput = JsonObject, TOutput = JsonObject> {
   name: string;
   description?: string;
   deterministic?: boolean;
+  writes?: string[];
   input?: {
     schema?: JSONSchema<TInput>;
     bindings?: InputBinding[];
@@ -180,6 +191,7 @@ export interface EvaluationResult {
   issues: string[];
   summary: string;
   shouldRetry: boolean;
+  retryTargetNodeId?: string;
   signal?: EvaluationSignal;
 }
 

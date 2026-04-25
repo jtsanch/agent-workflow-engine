@@ -19,6 +19,13 @@ export interface NodeRunnerResult {
   output: NodeOutput;
   execution: NodeExecution;
   feedback?: NodeFeedback;
+  data?: Record<string, unknown>;
+  diagnostics?: {
+    usedFallbacks?: string[];
+    warnings?: string[];
+    constraintResults?: Record<string, boolean>;
+    signals?: Record<string, unknown>;
+  };
 }
 
 function createId(prefix: string): string {
@@ -279,7 +286,7 @@ function buildFeedback(nodeId: string, result: EvaluationResult, now: string): N
     id: createId("feedback"),
     nodeExecutionId: "",
     sourceNodeId: nodeId,
-    targetNodeId: "",
+    targetNodeId: result.retryTargetNodeId ?? "",
     score: result.score,
     shouldRetry: result.shouldRetry,
     summary: result.issues.join("; ") || (result.passed ? "Output passed evaluator review." : "Evaluator reported issues."),
@@ -347,6 +354,9 @@ export async function runNode(
 
   validateSchema(result, node.output.schema);
   const output = normalizeOutput(result);
+  const dataPatch = {
+    [node.id]: output.data
+  };
   const completedAt = Date.now();
   const execution: NodeExecution = {
     id: createId("nodeexec"),
@@ -369,5 +379,5 @@ export async function runNode(
     feedback.nodeExecutionId = execution.id;
   }
 
-  return { output, execution, feedback };
+  return { output, execution, feedback, data: dataPatch };
 }

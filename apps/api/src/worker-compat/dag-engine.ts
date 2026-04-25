@@ -1,5 +1,20 @@
 import type { AgentDAG, AgentNode, JsonObject, NodeExecution, NodeFeedback, NodeOutput, ToolInvocation } from "@personal-agent-os/shared";
-import type { ExecutionContext, ToolRegistry } from "@personal-agent-os/agent-sdk";
+import type {
+  ExecutionContext as BaseExecutionContext,
+  ToolRegistry
+} from "../../../../packages/agent-sdk/src/types.js";
+
+type WorkingState = {
+  data: Record<string, unknown>;
+  diagnostics: {
+    usedFallbacks: string[];
+    warnings: string[];
+    constraintResults: Record<string, boolean>;
+    signals: Record<string, unknown>;
+  };
+};
+
+type ExecutionContext = BaseExecutionContext & { workingState: WorkingState };
 
 function getByPath(source: unknown, path?: string): unknown {
   if (!path) {

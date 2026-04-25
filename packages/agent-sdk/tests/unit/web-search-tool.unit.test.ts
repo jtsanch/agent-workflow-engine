@@ -15,6 +15,15 @@ const context: ExecutionContext = {
   registry: {
     execute: async () => undefined
   },
+  workingState: {
+    data: {},
+    diagnostics: {
+      usedFallbacks: [],
+      warnings: [],
+      constraintResults: {},
+      signals: {}
+    }
+  },
   now: () => "2026-04-11T00:00:00.000Z",
   logger: {
     info: () => undefined

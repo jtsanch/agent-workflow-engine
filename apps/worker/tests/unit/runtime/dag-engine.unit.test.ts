@@ -1,7 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentDAG, AgentNode, NodeFeedback, NodeExecution } from "@personal-agent-os/shared";
-import type { ExecutionContext } from "@personal-agent-os/agent-sdk";
+import type { ExecutionContext as BaseExecutionContext } from "../../../../../packages/agent-sdk/src/types.js";
 import { ExecutionState } from "../../../src/runtime/execution-state.js";
+
+type WorkingState = {
+  data: Record<string, unknown>;
+  diagnostics: {
+    usedFallbacks: string[];
+    warnings: string[];
+    constraintResults: Record<string, boolean>;
+    signals: Record<string, unknown>;
+  };
+};
+
+type ExecutionContext = BaseExecutionContext & { workingState: WorkingState };
 
 vi.mock("../../../src/runtime/node-runner.js", () => ({
   runNode: vi.fn()
@@ -16,6 +28,15 @@ function createContext(overrides: Partial<ExecutionContext> = {}): ExecutionCont
   return {
     registry: {
       execute: vi.fn()
+    },
+    workingState: {
+      data: {},
+      diagnostics: {
+        usedFallbacks: [],
+        warnings: [],
+        constraintResults: {},
+        signals: {}
+      }
     },
     now: () => "2026-04-10T00:00:00.000Z",
     logger: {
@@ -95,6 +116,16 @@ function createEvaluatorNode(id = "review"): AgentNode {
 describe("dag-engine helpers", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("initializes workingState correctly", () => {
+    const state = __test__.createInitialWorkingState();
+
+    expect(state.data).toEqual({});
+    expect(state.diagnostics.usedFallbacks).toEqual([]);
+    expect(Object.isFrozen(state)).toBe(true);
+    expect(Object.isFrozen(state.data)).toBe(true);
+    expect(Object.isFrozen(state.diagnostics)).toBe(true);
   });
 
   it("creates a failed node execution record from an error", () => {
@@ -184,6 +215,7 @@ describe("dag-engine helpers", () => {
     const node = createEvaluatorNode();
     const state = new ExecutionState({});
     const context = createContext({ nodeOutputs: undefined });
+    const previousWorkingState = context.workingState;
     const nodeExecutions: NodeExecution[] = [];
     const nodeFeedback: NodeFeedback[] = [];
     const feedback: NodeFeedback = {
@@ -203,6 +235,12 @@ describe("dag-engine helpers", () => {
           node,
           input: {},
           result: {
+            data: {
+              normalized: true
+            },
+            diagnostics: {
+              usedFallbacks: ["fallback_from_node"]
+            },
             output: {
               data: {
                 score: 0.9,
@@ -257,6 +295,18 @@ describe("dag-engine helpers", () => {
       },
       artifacts: []
     });
+    expect(context.workingState).toMatchObject({
+      data: {
+        normalized: true
+      },
+      diagnostics: {
+        usedFallbacks: ["fallback_from_node"]
+      }
+    });
+    expect(context.workingState).not.toBe(previousWorkingState);
+    expect(Object.isFrozen(context.workingState)).toBe(true);
+    expect(Object.isFrozen(context.workingState.data)).toBe(true);
+    expect(Object.isFrozen(context.workingState.diagnostics)).toBe(true);
   });
 
   it("skips retry scheduling when the node is not an evaluator or feedback is missing", () => {
@@ -287,7 +337,8 @@ describe("dag-engine helpers", () => {
           }
         }
       ],
-      state
+      state,
+      createContext()
     );
 
     expect(state.getRetryCount("lookup")).toBe(0);
@@ -338,26 +389,27 @@ describe("dag-engine helpers", () => {
           }
         }
       ],
-      state
+      state,
+      createContext()
     );
 
     expect(state.getRetryCount("draft")).toBe(0);
     expect(feedback.targetNodeId).toBe("");
   });
 
-  it("schedules retries for feedback targets and records the first target on feedback", () => {
+  it("schedules retries for the evaluator retry target and clears legacy node outputs", () => {
     const dag: AgentDAG = {
       id: "dag_1",
       version: "1.0.0",
       name: "Retry DAG",
       nodes: [
-        createEvaluatorNode(),
         createTransformNode("draft"),
+        createEvaluatorNode(),
         createTransformNode("publish")
       ],
       edges: [
-        { id: "feedback_1", from: "review", to: "draft", type: "feedback" },
-        { id: "data_1", from: "draft", to: "publish", type: "data" }
+        { id: "data_1", from: "draft", to: "review", type: "data" },
+        { id: "data_2", from: "review", to: "publish", type: "data" }
       ],
       entryNodeIds: ["draft"],
       exitNodeIds: ["publish"]
@@ -375,14 +427,22 @@ describe("dag-engine helpers", () => {
     };
 
     const state = new ExecutionState({});
+    const context = createContext({
+      nodeOutputs: {
+        draft: { data: { text: "old draft" }, artifacts: [] },
+        review: { data: { score: 0.2 }, artifacts: [] },
+        publish: { data: { ok: true }, artifacts: [] }
+      }
+    });
     state.store("draft", { data: { text: "old draft" }, artifacts: [] });
+    state.store("review", { data: { score: 0.2 }, artifacts: [] });
     state.store("publish", { data: { ok: true }, artifacts: [] });
 
     __test__.scheduleRetries(
       dag,
       [
         {
-          node: dag.nodes[0],
+          node: dag.nodes[1],
           input: {},
           result: {
             output: {
@@ -391,7 +451,8 @@ describe("dag-engine helpers", () => {
                 passed: false,
                 issues: ["Needs another pass"],
                 summary: "Needs another pass",
-                shouldRetry: true
+                shouldRetry: true,
+                retryTargetNodeId: "draft"
               },
               artifacts: []
             },
@@ -400,17 +461,61 @@ describe("dag-engine helpers", () => {
           }
         }
       ],
-      state
+      state,
+      context
     );
 
     expect(state.isRetryPending("draft")).toBe(true);
     expect(state.getRetryCount("draft")).toBe(1);
     expect(state.getNodeOutput("draft")).toBeUndefined();
+    expect(state.getNodeOutput("review")).toBeUndefined();
     expect(state.getNodeOutput("publish")).toBeUndefined();
     expect(feedback.targetNodeId).toBe("draft");
+    expect(context.nodeOutputs?.draft).toBeUndefined();
+    expect(context.nodeOutputs?.review).toBeUndefined();
+    expect(context.nodeOutputs?.publish).toBeUndefined();
   });
 
-  it("leaves targetNodeId unchanged when retrying without feedback edges", () => {
+  it("throws when runnable nodes declare conflicting writes", () => {
+    expect(() =>
+      __test__.assertNoWriteConflicts([
+        {
+          ...createTransformNode("draft_a"),
+          writes: ["workingState.data.plan"]
+        },
+        {
+          ...createTransformNode("draft_b"),
+          writes: ["workingState.data.plan"]
+        }
+      ])
+    ).toThrow('Write conflict on field "workingState.data.plan" between nodes: draft_a, draft_b');
+  });
+
+  it("stops batch execution before runNode when conflicting writes are detected", async () => {
+    await expect(
+      __test__.executeNodesBatch(
+        [
+          {
+            ...createTransformNode("draft_a"),
+            writes: ["workingState.data.plan"]
+          },
+          {
+            ...createTransformNode("draft_b"),
+            writes: ["workingState.data.plan"]
+          }
+        ],
+        "run_conflict",
+        new ExecutionState({}),
+        createContext(),
+        [],
+        []
+      )
+    ).rejects.toThrow('Write conflict on field "workingState.data.plan" between nodes: draft_a, draft_b');
+
+    expect(runNodeMock).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the evaluator as the retry target when none is provided", () => {
     const evaluator = createEvaluatorNode();
     const dag: AgentDAG = {
       id: "dag_empty_targets",
@@ -454,10 +559,11 @@ describe("dag-engine helpers", () => {
           }
         }
       ],
-      new ExecutionState({})
+      new ExecutionState({}),
+      createContext()
     );
 
-    expect(feedback.targetNodeId).toBe("");
+    expect(feedback.targetNodeId).toBe("review");
   });
 
   it("wraps thrown node-runner errors in DAGExecutionError during executeNodesBatch", async () => {

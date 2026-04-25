@@ -61,6 +61,7 @@ const baseNodeSchema = z.object({
   name: z.string(),
   description: z.string().optional(),
   deterministic: z.boolean().optional(),
+  writes: z.array(z.string()).optional(),
   input: z
     .object({
       schema: jsonSchemaSchema.optional(),

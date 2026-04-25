@@ -1,5 +1,17 @@
 import type { DataRef, InputBinding, NodeOutput } from "@personal-agent-os/shared";
-import type { ExecutionContext } from "@personal-agent-os/agent-sdk";
+import type { ExecutionContext as BaseExecutionContext } from "../../../../packages/agent-sdk/src/types.js";
+
+type WorkingState = {
+    data: Record<string, unknown>;
+    diagnostics: {
+        usedFallbacks: string[];
+        warnings: string[];
+        constraintResults: Record<string, boolean>;
+        signals: Record<string, unknown>;
+    };
+};
+
+type ExecutionContext = BaseExecutionContext & { workingState: WorkingState };
 
 export function resolveInputBindings(
     bindings: InputBinding[] | undefined,
@@ -42,11 +54,47 @@ export function resolveDataRef(ref: DataRef, optional: boolean, context: Executi
             return ref.value;
 
         case "context":
-            return getByPath(context, ref.path);
+            return resolveBinding(ref.path, context);
 
         default:
             throw new Error(`Unknown DataRef source`);
     }
+}
+
+export function resolveBinding(path: string | undefined, context: ExecutionContext): unknown {
+    if (!path) {
+        return context;
+    }
+
+    if (path === "$state") {
+        return context.workingState.data;
+    }
+    if (path.startsWith("$state.")) {
+        return getByPath(context.workingState.data, path.slice("$state.".length));
+    }
+
+    if (path === "$diagnostics") {
+        return context.workingState.diagnostics;
+    }
+    if (path.startsWith("$diagnostics.")) {
+        return getByPath(context.workingState.diagnostics, path.slice("$diagnostics.".length));
+    }
+
+    if (path === "$input") {
+        return context.jobInput;
+    }
+    if (path.startsWith("$input.")) {
+        return getByPath(context.jobInput, path.slice("$input.".length));
+    }
+
+    if (path === "$.nodeOutputs") {
+        return context.nodeOutputs;
+    }
+    if (path.startsWith("$.nodeOutputs.")) {
+        return getByPath(context.nodeOutputs, path.slice("$.nodeOutputs.".length));
+    }
+
+    return getByPath(context, path);
 }
 
 function getByPath(obj: any, path?: string) {
@@ -55,5 +103,6 @@ function getByPath(obj: any, path?: string) {
 }
 
 export const __test__ = {
-    getByPath
+    getByPath,
+    resolveBinding
 };

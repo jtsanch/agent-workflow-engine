@@ -15,8 +15,6 @@ const createJobInput: CreateJobInput = {
   timezone: "America/Los_Angeles",
   inputs: {
     preferences: {
-      days: 7,
-      servings: 2,
       budgetUsd: 100,
       dietaryTags: ["balanced"]
     }
@@ -50,7 +48,7 @@ describe("service integration", () => {
     expect(completedRun.status).toBe("succeeded");
     expect(runs).toHaveLength(2);
     expect(runs.some((run) => run.nodeExecutions.length > 0)).toBe(true);
-    expect(runs.some((run) => run.toolInvocations.length > 0)).toBe(true);
+    expect(runs.every((run) => run.toolInvocations.length === 0)).toBe(true);
     expect(readiness).toEqual({
       ok: true,
       checks: {

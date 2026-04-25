@@ -202,11 +202,7 @@ describe("executeDAG", () => {
       weeklyGroceryPlanner.dag,
       {
         preferences: {
-          days: 1,
-          servings: 1,
-          desiredWeeklyPatterns: {
-            meatMealsPerWeek: 3
-          }
+          includeMeat: true,
         }
       },
       "run_weekly_meat_pref",

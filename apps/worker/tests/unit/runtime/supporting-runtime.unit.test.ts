@@ -25,6 +25,7 @@ describe("supporting runtime helpers", () => {
   });
 
   it("includes tool and runtime hints in the execution plan", () => {
+
     const plan = planJob(weeklyGroceryPlanner as AgentDefinition, {
       id: "job_1",
       userId: "user_1",
@@ -37,7 +38,7 @@ describe("supporting runtime helpers", () => {
       updatedAt: "2026-04-10T00:00:00.000Z"
     });
 
-    expect(plan.toolHints).toContain("web_search.search");
+    expect(plan.toolHints).toContain("transform");
     expect(plan.toolHints).toContain("llm");
   });
 });

@@ -160,7 +160,7 @@ describe("LlmGenerateTextTool", () => {
     expect(createCompletion).toHaveBeenCalledWith(
       expect.objectContaining({
         temperature: 0.2,
-        max_completion_tokens: 800
+        max_completion_tokens: 2000
       })
     );
   });

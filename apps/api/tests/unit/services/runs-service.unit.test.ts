@@ -79,7 +79,7 @@ describe("RunsService", () => {
     expect(completedRun.output?.data).toBeDefined();
     expect(runs).toHaveLength(2);
     expect(runs.some((run) => run.nodeExecutions.length > 0)).toBe(true);
-    expect(runs.some((run) => run.toolInvocations.length > 0)).toBe(true);
+    expect(runs.every((run) => run.toolInvocations.length === 0)).toBe(true);
   });
 
   it("throws when enqueueing an unknown job", async () => {

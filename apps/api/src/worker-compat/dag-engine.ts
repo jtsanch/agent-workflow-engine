@@ -30,6 +30,42 @@ function getByPath(source: unknown, path?: string): unknown {
   }, source);
 }
 
+function resolveBinding(path: string | undefined, context: ExecutionContext): unknown {
+  if (!path) {
+    return context;
+  }
+
+  if (path === "$state") {
+    return context.workingState.data;
+  }
+  if (path.startsWith("$state.")) {
+    return getByPath(context.workingState.data, path.slice("$state.".length));
+  }
+
+  if (path === "$diagnostics") {
+    return context.workingState.diagnostics;
+  }
+  if (path.startsWith("$diagnostics.")) {
+    return getByPath(context.workingState.diagnostics, path.slice("$diagnostics.".length));
+  }
+
+  if (path === "$input") {
+    return context.jobInput;
+  }
+  if (path.startsWith("$input.")) {
+    return getByPath(context.jobInput, path.slice("$input.".length));
+  }
+
+  if (path === "$.nodeOutputs") {
+    return context.nodeOutputs;
+  }
+  if (path.startsWith("$.nodeOutputs.")) {
+    return getByPath(context.nodeOutputs, path.slice("$.nodeOutputs.".length));
+  }
+
+  return getByPath(context, path);
+}
+
 function resolveNodeInput(
   node: AgentNode,
   jobInputs: Record<string, unknown>,
@@ -48,7 +84,7 @@ function resolveNodeInput(
     } else if (ref.source === "static") {
       result[binding.key] = ref.value;
     } else if (ref.source === "context") {
-      result[binding.key] = getByPath(context, ref.path);
+      result[binding.key] = resolveBinding(ref.path, context);
     }
   }
 
@@ -190,6 +226,15 @@ export async function executeDagCompat(
 
       const output = normalizeOutput(result);
       outputs.set(node.id, output);
+      context.nodeOutputs = context.nodeOutputs ?? {};
+      context.nodeOutputs[node.id] = output;
+      context.workingState = {
+        data: {
+          ...context.workingState.data,
+          [node.id]: output.data
+        },
+        diagnostics: context.workingState.diagnostics
+      };
       completed.add(node.id);
 
       const completedAt = Date.now();

@@ -1,5 +1,5 @@
-import { createToolRegistry } from "../../../../packages/agent-sdk/src/tool-registry.js";
-import type { ExecutionContext, WebSearchInput } from "../../../../packages/agent-sdk/src/types.js";
+import { createToolRegistry } from "@personal-agent-os/agent-sdk";
+import type { ExecutionContext, WebSearchInput } from "@personal-agent-os/agent-sdk";
 
 export type SearchInput = Pick<WebSearchInput, "query" | "zipcode" | "stores" | "category">;
 

@@ -12,7 +12,7 @@ import type {
   TransformNode,
   ToolNode
 } from "@personal-agent-os/shared";
-import type {ExecutionContext, LLMOutput} from "../../../../packages/agent-sdk/src/types.js";
+import type {ExecutionContext, LLMOutput} from "@personal-agent-os/agent-sdk";
 import { validateSchema } from "./schema-utils.js";
 
 export interface NodeRunnerResult {

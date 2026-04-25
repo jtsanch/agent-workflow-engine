@@ -1,5 +1,5 @@
-import { createLlmBudget } from "../../../../packages/agent-sdk/src/tools/llm-budget.js";
-import type { ExecutionContext } from "../../../../packages/agent-sdk/src/types.js";
+import { createLlmBudget } from "@personal-agent-os/agent-sdk";
+import type { ExecutionContext } from "@personal-agent-os/agent-sdk";
 import type { JobRun, NodeExecution, NodeFeedback, ToolInvocation, UserContext } from "@personal-agent-os/shared";
 import type {
   JobMemoryRepository,

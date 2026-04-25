@@ -1,6 +1,5 @@
-import { seedAgentDefinitions } from "../../../../packages/agent-sdk/src/definitions.js";
-import { createLlmBudget } from "../../../../packages/agent-sdk/src/tools/llm-budget.js";
-import type { ExecutionContext } from "../../../../packages/agent-sdk/src/types.js";
+import { seedAgentDefinitions, createLlmBudget } from "@personal-agent-os/agent-sdk";
+import type { ExecutionContext } from "@personal-agent-os/agent-sdk";
 import { createToolRegistry } from "../tools/registry.js";
 import type { Job } from "@personal-agent-os/shared";
 import { executeDAG } from "./dag-engine.js";

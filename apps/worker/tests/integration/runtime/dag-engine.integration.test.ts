@@ -1,20 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { weeklyGroceryPlanner } from "../../../src/agents/index.js";
+import { dailyGroceryPlanner } from "../../../src/agents/index.js";
 import { executeDAG } from "../../../src/runtime/dag-engine.js";
-import type { ExecutionContext } from "../../../../../packages/agent-sdk/src/types.js";
+import type { RunContext } from "@personal-agent-os/agent-sdk";
 
-const context: ExecutionContext = {
+const context: RunContext = {
   registry: {
     execute: async () => ({})
-  },
-  workingState: {
-    data: {},
-    diagnostics: {
-      usedFallbacks: [],
-      warnings: [],
-      constraintResults: {},
-      signals: {}
-    }
   },
   now: () => "2026-04-10T00:00:00.000Z",
   logger: {
@@ -25,7 +16,7 @@ const context: ExecutionContext = {
 describe("executeDAG", () => {
   it("executes the grocery DAG through its final plan node", async () => {
     const result = await executeDAG(
-      weeklyGroceryPlanner.dag,
+      dailyGroceryPlanner.dag,
       {
         preferences: {
           days: 7,
@@ -36,7 +27,7 @@ describe("executeDAG", () => {
           pantry: ["rice", "olive oil"]
         }
       },
-      "run_weekly",
+      "run_daily",
       context
     );
 
@@ -68,7 +59,7 @@ describe("executeDAG", () => {
 
   it("produces meals with nutrition and grocery item costs in the final JSON output", async () => {
     const result = await executeDAG(
-      weeklyGroceryPlanner.dag,
+      dailyGroceryPlanner.dag,
       {
         preferences: {
           days: 1,
@@ -80,7 +71,7 @@ describe("executeDAG", () => {
           }
         }
       },
-      "run_weekly",
+      "run_daily",
       context
     );
 
@@ -124,7 +115,7 @@ describe("executeDAG", () => {
 
   it("allows an empty grocery list only when pantry covers the full generated plan", async () => {
     const result = await executeDAG(
-      weeklyGroceryPlanner.dag,
+      dailyGroceryPlanner.dag,
       {
         preferences: {
           days: 1,
@@ -175,7 +166,7 @@ describe("executeDAG", () => {
 
   it("accepts desired meal preferences in the DAG input", async () => {
     const result = await executeDAG(
-      weeklyGroceryPlanner.dag,
+      dailyGroceryPlanner.dag,
       {
         preferences: {
           days: 1,
@@ -197,15 +188,15 @@ describe("executeDAG", () => {
     expect((result.finalOutput as { meals: unknown[] }).meals).toHaveLength(4);
   });
 
-  it("accepts weekly meat frequency preferences in the DAG input", async () => {
+  it("accepts daily meat frequency preferences in the DAG input", async () => {
     const result = await executeDAG(
-      weeklyGroceryPlanner.dag,
+      dailyGroceryPlanner.dag,
       {
         preferences: {
           includeMeat: true,
         }
       },
-      "run_weekly_meat_pref",
+      "run_daily_meat_pref",
       context
     );
 

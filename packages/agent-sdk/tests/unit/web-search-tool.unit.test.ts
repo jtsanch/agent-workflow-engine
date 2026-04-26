@@ -1,7 +1,7 @@
 import axios from "axios";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WebSearchTool } from "../../src/tools/web-search-tool.js";
-import type { ExecutionContext, WebSearchOutput } from "../../src/types.js";
+import type { RunContext, WebSearchOutput } from "../../src/types.js";
 
 vi.mock("axios", () => ({
   default: {
@@ -11,18 +11,9 @@ vi.mock("axios", () => ({
 }));
 
 const mockedAxios = vi.mocked(axios, true);
-const context: ExecutionContext = {
+const context: RunContext = {
   registry: {
     execute: async () => undefined
-  },
-  workingState: {
-    data: {},
-    diagnostics: {
-      usedFallbacks: [],
-      warnings: [],
-      constraintResults: {},
-      signals: {}
-    }
   },
   now: () => "2026-04-11T00:00:00.000Z",
   logger: {
@@ -105,7 +96,7 @@ describe("WebSearchTool", () => {
       {
         zipcode: "94107",
         stores: "Trader Joe's, Costco",
-        category: "weekly grocery deals"
+        category: "daily grocery deals"
       },
       context
     );

@@ -10,6 +10,9 @@ interface DAGPreviewProps {
 
 export function DAGPreview({ agentDefinition, activeNodeId, nodeMeta, onSelectNode }: DAGPreviewProps) {
   const { dag } = agentDefinition;
+  const exitNodeIds = dag.nodes
+    .filter((node) => !dag.edges.some((edge) => edge.from === node.id))
+    .map((node) => node.id);
 
   const describeOutputs = (schema: unknown) => {
     if (!schema || typeof schema !== "object") {
@@ -61,7 +64,7 @@ export function DAGPreview({ agentDefinition, activeNodeId, nodeMeta, onSelectNo
           <p className="eyebrow">Workflow DAG</p>
           <h3>{dag.name}</h3>
         </div>
-        <span className="pill">Exit: {(dag.exitNodeIds ?? []).join(", ") || "n/a"}</span>
+        <span className="pill">Exit: {exitNodeIds.join(", ") || "n/a"}</span>
       </div>
 
       <div className="dag-grid">

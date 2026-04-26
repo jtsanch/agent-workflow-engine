@@ -1,16 +1,6 @@
-import type { AgentDefinition, NodeOutput } from "../../shared/src/domain/types.js";
+import type { AgentDefinition, NodeOutputEntry } from "@personal-agent-os/shared";
 
 export type UnknownObject = { [key: string]: unknown };
-
-export interface WorkingState {
-  data: Record<string, unknown>;
-  diagnostics: {
-    usedFallbacks: string[];
-    warnings: string[];
-    constraintResults: Record<string, boolean>;
-    signals: Record<string, unknown>;
-  };
-}
 
 export interface LlmBudget {
   maxTokens: number;
@@ -23,16 +13,12 @@ export interface ToolRegistry {
   execute: (
     name: string,
     input: Record<string, unknown>,
-    context: ExecutionContext
+    context: RunContext
   ) => Promise<unknown>;
 }
 
-export interface ExecutionContext {
-  jobInput?: Record<string, unknown>;
+export interface RunContext {
   registry: ToolRegistry;
-  nodeOutputs?: Record<string, NodeOutput>;
-  workingState: WorkingState;
-  memoryStore?: {};
   now: () => string;
   logger: {
     info(message: string, context?: Record<string, unknown>): void;
@@ -48,7 +34,7 @@ export interface ToolDefinition<
 > {
   name: string;
   description: string;
-  run: (input: TInput, context: ExecutionContext) => Promise<TOutput> | TOutput;
+  run: (input: TInput, context: RunContext) => Promise<TOutput> | TOutput;
 }
 
 export type InputOf<T> = T extends ToolDefinition<infer I, any>
@@ -89,6 +75,18 @@ export type ToolMap = {
       NotificationsSendOutput
   >;
 };
+
+export function appendNodeOutput(
+  state: { nodeOutputs?: Record<string, NodeOutputEntry[]> },
+  nodeInstanceId: string,
+  entry: NodeOutputEntry
+): void {
+  state.nodeOutputs ??= {};
+  state.nodeOutputs[nodeInstanceId] = [
+    ...(state.nodeOutputs[nodeInstanceId] ?? []),
+    entry
+  ];
+}
 
 export function defineAgent(agentDefinition: AgentDefinition): AgentDefinition {
   return agentDefinition;

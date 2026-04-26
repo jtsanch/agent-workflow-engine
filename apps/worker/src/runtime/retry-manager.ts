@@ -1,16 +1,16 @@
 import type { AgentDAG, AgentNode, EvaluationResult, EvaluatorNode, NodeFeedback } from "@personal-agent-os/shared";
 import { ExecutionState } from "./execution-state.js";
 
-const DEFAULT_MAX_RETRY_ATTEMPTS = 2;
-
 export function getDownstreamNodes(nodeId: string, dag: AgentDAG, visited = new Set<string>()): string[] {
-  const outgoing = dag.edges.filter((edge) => (edge.type ?? "data") === "data" && edge.from === nodeId).map((edge) => edge.to);
-  for (const nodeId of outgoing) {
-    if (visited.has(nodeId)) {
-      continue;
+  const outgoing = dag.edges
+      .filter(edge => (edge.type ?? "data") === "data" && edge.from === nodeId)
+      .map(edge => edge.to);
+
+  for (const next of outgoing) {
+    if (!visited.has(next)) {
+      visited.add(next);
+      getDownstreamNodes(next, dag, visited);
     }
-    visited.add(nodeId);
-    getDownstreamNodes(nodeId, dag, visited);
   }
 
   return Array.from(visited);
@@ -25,7 +25,7 @@ function getEvaluationResult(output: { data: unknown }): EvaluationResult | null
 }
 
 export function shouldRetry(node: AgentNode, output: { data: unknown }): boolean {
-  if (node.type !== "evaluator") {
+  if (node.type !== "evaluator" || !node.execution?.retryPolicy) {
     return false;
   }
 
@@ -57,12 +57,16 @@ export function applyEvaluatorRetry(
   feedback: NodeFeedback,
   state: ExecutionState
 ) : string[] {
+  if (!evaluatorNode.execution?.retryPolicy) {
+    return [];
+  }
+
   const result = getEvaluationResult(output);
   if (!result?.shouldRetry) {
     return [];
   }
 
-  const maxRetries = evaluatorNode.execution?.retryPolicy?.maxRetries ?? DEFAULT_MAX_RETRY_ATTEMPTS;
+  const maxRetries = evaluatorNode.execution.retryPolicy.maxRetries;
   const targetNodeId = resolveRetryTargetNodeId(dag, evaluatorNode, result);
 
   if (state.getRetryCount(targetNodeId) >= maxRetries) {

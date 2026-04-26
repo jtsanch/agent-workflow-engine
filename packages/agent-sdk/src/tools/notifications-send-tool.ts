@@ -1,11 +1,11 @@
-import type { ExecutionContext, NotificationsSendInput, NotificationsSendOutput, UnknownObject } from "../types.js";
+import type { NotificationsSendInput, NotificationsSendOutput, RunContext, UnknownObject } from "../types.js";
 import { BaseTool } from "./base-tool.js";
 
 export class NotificationsSendTool extends BaseTool<"notifications.send", NotificationsSendInput, NotificationsSendOutput> {
   readonly name = "notifications.send";
   readonly description = "Sends a notification to a configured webhook.";
 
-  protected async execute(input: NotificationsSendInput, context: ExecutionContext): Promise<NotificationsSendOutput> {
+  protected async execute(input: NotificationsSendInput, context: RunContext): Promise<NotificationsSendOutput> {
     const destination = input.destination;
     const channel = input.channel;
     const message = input.message;

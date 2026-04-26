@@ -7,7 +7,6 @@ import {
   InMemoryJobMemoryRepository,
   InMemoryJobRepository,
   InMemoryJobRunRepository,
-  InMemoryJobRunStepRepository,
   InMemoryJobScheduleRepository,
   InMemoryNodeExecutionRepository,
   InMemoryNodeFeedbackRepository,
@@ -62,7 +61,6 @@ describe("RunsService", () => {
     const runsService = new RunsService(
       jobRepository,
       new InMemoryJobRunRepository(database),
-      new InMemoryJobRunStepRepository(database),
       new InMemoryToolInvocationRepository(database),
       new InMemoryNodeExecutionRepository(database),
       new InMemoryNodeFeedbackRepository(database),
@@ -87,7 +85,6 @@ describe("RunsService", () => {
     const runsService = new RunsService(
       new InMemoryJobRepository(database),
       new InMemoryJobRunRepository(database),
-      new InMemoryJobRunStepRepository(database),
       new InMemoryToolInvocationRepository(database),
       new InMemoryNodeExecutionRepository(database),
       new InMemoryNodeFeedbackRepository(database),

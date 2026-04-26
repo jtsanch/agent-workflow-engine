@@ -847,8 +847,6 @@ export const groceryAgentDefinition: AgentDefinition = defineAgent({
     version: "2.0.0",
     name: "Grocery Planner DAG",
     description: "Separate LLM steps for meal generation and nutrition estimation followed by deterministic transforms for normalization, grocery aggregation, purchasable conversion, and costing.",
-    entryNodeIds: ["generateMeals"],
-    exitNodeIds: ["finalizePlan"],
     nodes: [
       withWrites({
         id: "generateMeals",
@@ -902,7 +900,7 @@ Return STRICT JSON only.
           bindings: [
             {
               key: "preferences",
-              ref: { source: "context", path: "$input.preferences" }
+              ref: { source: "job_input", path: "preferences" }
             }
           ]
         },
@@ -982,7 +980,7 @@ Strict JSON only.
           bindings: [
             {
               key: "meals",
-              ref: { source: "context", path: "$state.generateMeals.meals" }
+              ref: { source: "node_output", nodeId: "generateMeals", path: "meals" }
             }
           ]
         },
@@ -1040,7 +1038,7 @@ Strict JSON only.
           bindings: [
             {
               key: "meals",
-              ref: { source: "context", path: "$state.estimateNutrition.meals" }
+              ref: { source: "node_output", nodeId: "estimateNutrition", path: "meals" }
             }
           ]
         },
@@ -1086,12 +1084,12 @@ Strict JSON only.
           bindings: [
             {
               key: "meals",
-              ref: { source: "context", path: "$state.normalizeMeals.meals" }
+              ref: { source: "node_output", nodeId: "normalizeMeals", path: "meals" }
             },
             {
               key: "pantry",
               optional: true,
-              ref: { source: "context", path: "$input.preferences.pantry" }
+              ref: { source: "job_input", path: "preferences.pantry" }
             }
           ]
         },
@@ -1159,15 +1157,15 @@ Strict JSON only.
           bindings: [
             {
               key: "meals",
-              ref: { source: "context", path: "$state.aggregateIngredients.meals" }
+              ref: { source: "node_output", nodeId: "aggregateIngredients", path: "meals" }
             },
             {
               key: "aggregatedIngredients",
-              ref: { source: "context", path: "$state.aggregateIngredients.aggregatedIngredients" }
+              ref: { source: "node_output", nodeId: "aggregateIngredients", path: "aggregatedIngredients" }
             },
             {
               key: "pantryCoverage",
-              ref: { source: "context", path: "$state.aggregateIngredients.pantryCoverage" }
+              ref: { source: "node_output", nodeId: "aggregateIngredients", path: "pantryCoverage" }
             }
           ]
         },
@@ -1239,15 +1237,15 @@ Strict JSON only.
           bindings: [
             {
               key: "meals",
-              ref: { source: "context", path: "$state.convertToPurchasableUnits.meals" }
+              ref: { source: "node_output", nodeId: "convertToPurchasableUnits", path: "meals" }
             },
             {
               key: "groceryList",
-              ref: { source: "context", path: "$state.convertToPurchasableUnits.groceryList" }
+              ref: { source: "node_output", nodeId: "convertToPurchasableUnits", path: "groceryList" }
             },
             {
               key: "pantryCoverage",
-              ref: { source: "context", path: "$state.convertToPurchasableUnits.pantryCoverage" }
+              ref: { source: "node_output", nodeId: "convertToPurchasableUnits", path: "pantryCoverage" }
             }
           ]
         },
@@ -1326,16 +1324,16 @@ Output JSON:
           bindings: [
             {
               key: "plan",
-              ref: { source: "context", path: "$state.calculateCosts" }
+              ref: { source: "node_output", nodeId: "calculateCosts" }
             },
             {
               key: "pantryCoverage",
-              ref: { source: "context", path: "$state.calculateCosts.pantryCoverage" }
+              ref: { source: "node_output", nodeId: "calculateCosts", path: "pantryCoverage" }
             },
             {
               key: "dailyTargets",
               optional: true,
-              ref: { source: "context", path: "$input.preferences.dailyTargets" }
+              ref: { source: "job_input", path: "preferences.dailyTargets" }
             }
           ]
         },
@@ -1363,11 +1361,11 @@ Output JSON:
           bindings: [
             {
               key: "plan",
-              ref: { source: "context", path: "$state.calculateCosts" }
+              ref: { source: "node_output", nodeId: "calculateCosts" }
             },
             {
               key: "evaluation",
-              ref: { source: "context", path: "$state.validatePlan" }
+              ref: { source: "node_output", nodeId: "validatePlan" }
             }
           ]
         },
@@ -1389,7 +1387,7 @@ Output JSON:
   }
 });
 
-// currently daily will make weekly
-export const weeklyGroceryPlanner = groceryAgentDefinition;
+// currently daily will make daily
+export const dailyGroceryPlanner = groceryAgentDefinition;
 
 export const seedAgentDefinitions: AgentDefinition[] = [groceryAgentDefinition];

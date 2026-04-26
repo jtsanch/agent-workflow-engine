@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { AgentDefinition, Job } from "@personal-agent-os/shared";
-import { weeklyGroceryPlanner } from "@personal-agent-os/agent-sdk";
+import { dailyGroceryPlanner } from "@personal-agent-os/agent-sdk";
 import { planJob } from "../../../src/runtime/planner.js";
 
 describe("supporting runtime helpers", () => {
   it("builds a plan from the agent definition and job", () => {
-    const agent = weeklyGroceryPlanner as AgentDefinition;
+    const agent = dailyGroceryPlanner as AgentDefinition;
     const job: Job = {
       id: "job_1",
       userId: "user_1",
-      name: "Weekly Grocery",
+      name: "Daily Grocery",
       dagId: agent.dag.id,
       agentDefinitionKey: agent.key,
       status: "active",
@@ -26,12 +26,12 @@ describe("supporting runtime helpers", () => {
 
   it("includes tool and runtime hints in the execution plan", () => {
 
-    const plan = planJob(weeklyGroceryPlanner as AgentDefinition, {
+    const plan = planJob(dailyGroceryPlanner as AgentDefinition, {
       id: "job_1",
       userId: "user_1",
-      name: "Weekly Grocery",
-      dagId: weeklyGroceryPlanner.dag.id,
-      agentDefinitionKey: weeklyGroceryPlanner.key,
+      name: "Daily Grocery",
+      dagId: dailyGroceryPlanner.dag.id,
+      agentDefinitionKey: dailyGroceryPlanner.key,
       status: "active",
       inputs: {},
       createdAt: "2026-04-10T00:00:00.000Z",

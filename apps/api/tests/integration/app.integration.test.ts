@@ -92,7 +92,7 @@ describe("API integration", () => {
       query: {
         zipcode: "94107",
         stores: "Trader Joe's,Costco",
-        category: "weekly grocery deals"
+        category: "daily grocery deals"
       }
     });
 

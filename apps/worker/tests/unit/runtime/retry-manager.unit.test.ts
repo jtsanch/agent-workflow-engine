@@ -51,6 +51,51 @@ describe("retry-manager", () => {
     expect(shouldRetry(retryingNode, { data: { shouldRetry: false } })).toBe(false);
   });
 
+  it("does not retry when the evaluator has no retry policy configured", () => {
+    const evaluatorWithoutRetryPolicy: EvaluatorNode = {
+      ...retryingNode,
+      execution: undefined
+    };
+
+    expect(shouldRetry(evaluatorWithoutRetryPolicy, { data: { shouldRetry: true } })).toBe(false);
+
+    const feedback: NodeFeedback = {
+      id: "feedback_1",
+      nodeExecutionId: "nodeexec_1",
+      sourceNodeId: "reviewer",
+      targetNodeId: "",
+      score: 0.4,
+      shouldRetry: true,
+      summary: "Please refine",
+      createdAt: "2026-04-10T00:00:00.000Z"
+    };
+
+    expect(
+      applyEvaluatorRetry(
+        {
+          id: "dag-no-retry-policy",
+          version: "1.0.0",
+          name: "No Retry Policy DAG",
+          nodes: [evaluatorWithoutRetryPolicy],
+          edges: []
+        },
+        evaluatorWithoutRetryPolicy,
+        {
+          data: {
+            score: 0.4,
+            passed: false,
+            issues: ["Please refine"],
+            summary: "Please refine",
+            shouldRetry: true
+          }
+        },
+        feedback,
+        new ExecutionState({})
+      )
+    ).toEqual([]);
+    expect(feedback.targetNodeId).toBe("");
+  });
+
   it("returns false for non-evaluator nodes and non-object outputs", () => {
     const toolNode: AgentNode = {
       id: "lookup",
@@ -75,8 +120,6 @@ describe("retry-manager", () => {
       id: "dag-downstream",
       version: "1.0.0",
       name: "Downstream DAG",
-      entryNodeIds: ["draft"],
-      exitNodeIds: ["final"],
       nodes: [
         retryingNode,
         { id: "draft", version: "1.0.0", type: "transform", name: "Draft", run: () => ({}), output: { schema: { type: "object", additionalProperties: true } } },
@@ -100,8 +143,6 @@ describe("retry-manager", () => {
       id: "dag-test",
       version: "1.0.0",
       name: "Retry Test",
-      entryNodeIds: ["draft"],
-      exitNodeIds: ["reviewer"],
       nodes: [
         {
           id: "draft",
@@ -215,8 +256,6 @@ describe("retry-manager", () => {
       id: "dag-no-feedback",
       version: "1.0.0",
       name: "No Feedback DAG",
-      entryNodeIds: ["reviewer"],
-      exitNodeIds: ["reviewer"],
       nodes: [retryingNode],
       edges: []
     };
@@ -266,8 +305,6 @@ describe("retry-manager", () => {
           id: "dag-max-retries",
           version: "1.0.0",
           name: "Retry Limit DAG",
-          entryNodeIds: ["draft"],
-          exitNodeIds: ["reviewer"],
           nodes: [
             retryingNode,
             { id: "draft", version: "1.0.0", type: "transform", name: "Draft", run: () => ({}), output: { schema: { type: "object", additionalProperties: true } } }

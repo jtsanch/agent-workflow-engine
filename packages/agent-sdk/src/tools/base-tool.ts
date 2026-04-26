@@ -1,5 +1,5 @@
 import axios, { type AxiosRequestConfig } from "axios";
-import type { ExecutionContext, ToolDefinition } from "../types.js";
+import type { RunContext, ToolDefinition } from "../types.js";
 
 export interface RetryOptions {
   maxAttempts?: number;
@@ -15,12 +15,12 @@ export abstract class BaseTool<
   abstract readonly name: TName;
   abstract readonly description: string;
 
-  async run(input: TInput, context: ExecutionContext): Promise<TOutput> {
+  async run(input: TInput, context: RunContext): Promise<TOutput> {
     context.logger.info("Running tool", { toolName: this.name });
     return this.execute(input, context);
   }
 
-  protected abstract execute(input: TInput, context: ExecutionContext): Promise<TOutput>;
+  protected abstract execute(input: TInput, context: RunContext): Promise<TOutput>;
 
   protected async stub(output: TOutput): Promise<TOutput> {
     return output;

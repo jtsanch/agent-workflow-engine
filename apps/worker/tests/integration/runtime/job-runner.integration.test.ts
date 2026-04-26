@@ -5,9 +5,9 @@ import { runJob } from "../../../src/runtime/job-runner.js";
 describe("runJob integration", () => {
   it("executes a DAG-backed job and returns execution telemetry", async () => {
     const job: Job = {
-      id: "job_weekly_grocery",
+      id: "job_daily_grocery",
       userId: "user_test",
-      name: "Weekly Grocery",
+      name: "Daily Grocery",
       dagId: "dag_grocery_planner",
       agentDefinitionKey: "grocery-planner",
       status: "active",

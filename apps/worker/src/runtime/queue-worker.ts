@@ -1,5 +1,5 @@
 import { Pool } from "pg";
-import { seedAgentDefinitions } from "../../../../packages/agent-sdk/src/definitions.js";
+import { seedAgentDefinitions } from "@personal-agent-os/agent-sdk";
 import type { Job, JsonObject, NodeExecution, ToolInvocation } from "@personal-agent-os/shared";
 import { runJob } from "./job-runner.js";
 import { DAGExecutionError } from "./dag-engine.js";

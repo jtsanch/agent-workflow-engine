@@ -1,21 +1,13 @@
-import type { DataRef, InputBinding, NodeOutput } from "@personal-agent-os/shared";
-import type { ExecutionContext as BaseExecutionContext } from "../../../../packages/agent-sdk/src/types.js";
+import type { DataRef, InputBinding, NodeOutput, NodeOutputEntry } from "@personal-agent-os/shared";
 
-type WorkingState = {
-    data: Record<string, unknown>;
-    diagnostics: {
-        usedFallbacks: string[];
-        warnings: string[];
-        constraintResults: Record<string, boolean>;
-        signals: Record<string, unknown>;
-    };
-};
-
-type ExecutionContext = BaseExecutionContext & { workingState: WorkingState };
+export interface InputResolverState {
+    input?: Record<string, unknown>;
+    nodeOutputs?: Record<string, NodeOutputEntry[]>;
+}
 
 export function resolveInputBindings(
     bindings: InputBinding[] | undefined,
-    context: ExecutionContext
+    state: InputResolverState
 ): Record<string, unknown> {
     const result: Record<string, unknown> = {};
     if (bindings === undefined) {
@@ -23,7 +15,7 @@ export function resolveInputBindings(
     }
     for (const binding of bindings) {
         const { key, ref, optional } = binding;
-        const val = resolveDataRef(ref, !!optional, context);
+        const val = resolveDataRef(ref, !!optional, state);
         if (val !== undefined) {
             result[key] = val;
         }
@@ -31,13 +23,13 @@ export function resolveInputBindings(
     return result;
 }
 
-export function resolveDataRef(ref: DataRef, optional: boolean, context: ExecutionContext): unknown {
+export function resolveDataRef(ref: DataRef, optional: boolean, state: InputResolverState): unknown {
     switch (ref.source) {
         case "job_input":
-            return getByPath(context.jobInput, ref.path);
+            return getByPath(state.input, ref.path);
 
         case "node_output": {
-            const nodeOutput = context.nodeOutputs?.[ref.nodeId] as NodeOutput | undefined;
+            const nodeOutput = getLatestSuccessfulOutput(state, ref.nodeId);
             if (!nodeOutput) {
                 if (!optional) {
                     throw new Error(`Missing dependency: ${ref.nodeId}`);
@@ -53,48 +45,31 @@ export function resolveDataRef(ref: DataRef, optional: boolean, context: Executi
         case "static":
             return ref.value;
 
-        case "context":
-            return resolveBinding(ref.path, context);
-
         default:
             throw new Error(`Unknown DataRef source`);
     }
 }
 
-export function resolveBinding(path: string | undefined, context: ExecutionContext): unknown {
-    if (!path) {
-        return context;
+export function getLatestSuccessfulOutput(
+    state: Pick<InputResolverState, "nodeOutputs">,
+    nodeId: string
+): NodeOutput | undefined {
+    const entries = state.nodeOutputs?.[nodeId];
+    if (!entries) {
+        return undefined;
     }
 
-    if (path === "$state") {
-        return context.workingState.data;
-    }
-    if (path.startsWith("$state.")) {
-        return getByPath(context.workingState.data, path.slice("$state.".length));
-    }
-
-    if (path === "$diagnostics") {
-        return context.workingState.diagnostics;
-    }
-    if (path.startsWith("$diagnostics.")) {
-        return getByPath(context.workingState.diagnostics, path.slice("$diagnostics.".length));
+    for (let index = entries.length - 1; index >= 0; index -= 1) {
+        const entry = entries[index];
+        if (entry.success === true) {
+            return {
+                data: entry.data,
+                artifacts: entry.artifacts ?? []
+            };
+        }
     }
 
-    if (path === "$input") {
-        return context.jobInput;
-    }
-    if (path.startsWith("$input.")) {
-        return getByPath(context.jobInput, path.slice("$input.".length));
-    }
-
-    if (path === "$.nodeOutputs") {
-        return context.nodeOutputs;
-    }
-    if (path.startsWith("$.nodeOutputs.")) {
-        return getByPath(context.nodeOutputs, path.slice("$.nodeOutputs.".length));
-    }
-
-    return getByPath(context, path);
+    return undefined;
 }
 
 function getByPath(obj: any, path?: string) {
@@ -104,5 +79,5 @@ function getByPath(obj: any, path?: string) {
 
 export const __test__ = {
     getByPath,
-    resolveBinding
+    getLatestSuccessfulOutput,
 };

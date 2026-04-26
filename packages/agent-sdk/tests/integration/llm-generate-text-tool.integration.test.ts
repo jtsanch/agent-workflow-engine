@@ -1,19 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { LlmGenerateTextTool } from "../../src/tools/llm-generate-text-tool.js";
-import type { ExecutionContext } from "../../src/types.js";
+import type { RunContext } from "../../src/types.js";
 
-const context: ExecutionContext = {
+const context: RunContext = {
   registry: {
     execute: async () => undefined
-  },
-  workingState: {
-    data: {},
-    diagnostics: {
-      usedFallbacks: [],
-      warnings: [],
-      constraintResults: {},
-      signals: {}
-    }
   },
   now: () => "2026-04-11T00:00:00.000Z",
   logger: {

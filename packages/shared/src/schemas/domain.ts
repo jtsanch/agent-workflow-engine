@@ -134,9 +134,7 @@ export const agentDagSchema = z.object({
   name: z.string(),
   description: z.string().optional(),
   nodes: z.array(agentNodeSchema).min(1),
-  edges: z.array(agentEdgeSchema),
-  entryNodeIds: z.array(z.string()).min(1),
-  exitNodeIds: z.array(z.string()).min(1)
+  edges: z.array(agentEdgeSchema)
 });
 
 export const alertPreferenceSchema = z.object({

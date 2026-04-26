@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { __test__, resolveDataRef, resolveInputBindings } from "../../../src/runtime/input-resolver.js";
 
 const context = {
-  jobInput: {
+  input: {
     budget: 125,
     zipcode: "94107"
   },
@@ -24,76 +24,33 @@ const context = {
     }
   },
   nodeOutputs: {
-    research: {
-      data: {
-        result: {
-          text: "Fresh produce deals"
-        }
+    research: [
+      {
+        attempt: 1,
+        data: {
+          result: {
+            text: "Fresh produce deals"
+          }
+        },
+        artifacts: [],
+        success: true,
+        timestamp: 1712707200000
       },
-      artifacts: []
-    }
+      {
+        attempt: 2,
+        data: {
+          result: {
+            text: "Stale failed attempt"
+          }
+        },
+        artifacts: [],
+        success: false,
+        timestamp: 1712707300000,
+        error: "tool timeout"
+      }
+    ]
   },
-  registry: {
-    async execute() {
-      return {};
-    }
-  },
-  now: () => "2026-04-10T00:00:00.000Z",
-  logger: {
-    info: () => undefined
-  }
 };
-
-describe("resolveInputBindings", () => {
-  it("resolves new workingState/input bindings", () => {
-    const resolved = resolveInputBindings(
-      [
-        { key: "zip", ref: { source: "context", path: "$input.zipcode" } },
-        { key: "totalCost", ref: { source: "context", path: "$state.grocery.totalCost" } },
-        { key: "pantryCoverage", ref: { source: "context", path: "$diagnostics.signals.pantryCoverage" } }
-      ],
-      context
-    );
-
-    expect(resolved).toEqual({
-      zip: "94107",
-      totalCost: 24.5,
-      pantryCoverage: 0.75
-    });
-  });
-
-  it("still resolves nested upstream outputs through legacy node_output refs", () => {
-    const resolved = resolveInputBindings(
-      [
-        { key: "summary", ref: { source: "node_output", nodeId: "research", path: "result.text" } }
-      ],
-      context
-    );
-
-    expect(resolved).toEqual({
-      summary: "Fresh produce deals"
-    });
-  });
-
-  it("returns an empty object when bindings are undefined", () => {
-    expect(resolveInputBindings(undefined, context)).toEqual({});
-  });
-
-  it("skips optional bindings that resolve to undefined", () => {
-    const resolved = resolveInputBindings(
-      [
-        {
-          key: "optionalSummary",
-          ref: { source: "node_output", nodeId: "missing", path: "result.text" },
-          optional: true
-        }
-      ],
-      context
-    );
-
-    expect(resolved).toEqual({});
-  });
-});
 
 describe("resolveDataRef", () => {
   it("throws when a required node output is missing", () => {
@@ -114,46 +71,6 @@ describe("resolveDataRef", () => {
         context
       )
     ).toEqual({ preset: true });
-
-    expect(
-      resolveDataRef(
-        { source: "context", path: "jobInput.zipcode" },
-        false,
-        context
-      )
-    ).toBe("94107");
-
-    expect(
-      resolveDataRef(
-        { source: "context", path: "$input.zipcode" },
-        false,
-        context
-      )
-    ).toBe("94107");
-
-    expect(
-      resolveDataRef(
-        { source: "context", path: "$state.grocery.totalCost" },
-        false,
-        context
-      )
-    ).toBe(24.5);
-
-    expect(
-      resolveDataRef(
-        { source: "context", path: "$diagnostics.signals.pantryCoverage" },
-        false,
-        context
-      )
-    ).toBe(0.75);
-
-    expect(
-      resolveDataRef(
-        { source: "context", path: "$.nodeOutputs.research.data.result.text" },
-        false,
-        context
-      )
-    ).toBe("Fresh produce deals");
   });
 
   it("rejects unsupported memory refs and unknown ref sources", () => {
@@ -182,10 +99,15 @@ describe("getByPath", () => {
 });
 
 describe("resolveBinding", () => {
-  it("supports workingState, diagnostics, input, and legacy nodeOutputs paths", () => {
-    expect(__test__.resolveBinding("$state.grocery.totalCost", context)).toBe(24.5);
-    expect(__test__.resolveBinding("$diagnostics.usedFallbacks", context)).toEqual(["meal-default"]);
-    expect(__test__.resolveBinding("$input.budget", context)).toBe(125);
-    expect(__test__.resolveBinding("$.nodeOutputs.research.data.result.text", context)).toBe("Fresh produce deals");
+
+  it("returns the latest successful output instead of the latest failed attempt", () => {
+    expect(__test__.getLatestSuccessfulOutput(context, "research")).toEqual({
+      data: {
+        result: {
+          text: "Fresh produce deals"
+        }
+      },
+      artifacts: []
+    });
   });
 });

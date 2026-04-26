@@ -37,15 +37,6 @@ const context = {
       throw new Error(`Unknown tool: ${name}`);
     }
   },
-  workingState: {
-    data: {},
-    diagnostics: {
-      usedFallbacks: [],
-      warnings: [],
-      constraintResults: {},
-      signals: {}
-    }
-  },
   logger: {
     info: () => undefined
   }

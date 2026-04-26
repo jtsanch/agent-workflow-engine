@@ -17,7 +17,7 @@ describe("AlertsService", () => {
       {
         id: "job_1",
         userId: "user_1",
-        name: "Weekly Grocery",
+        name: "Daily Grocery",
         dagId: "dag_grocery_planner",
         agentDefinitionKey: "grocery-planner",
         status: "active",

@@ -1,9 +1,4 @@
-import type { AgentDefinition, Job } from "@personal-agent-os/shared";
-
-export interface ExecutionPlan {
-  prompt: string;
-  toolHints: string[];
-}
+import type { AgentDefinition, Job, ExecutionPlan } from "@personal-agent-os/shared";
 
 export function planJob(agentDefinition: AgentDefinition, job: Job): ExecutionPlan {
   return {

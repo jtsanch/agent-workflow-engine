@@ -1,5 +1,5 @@
 import type { ChatCompletionCreateParamsNonStreaming } from "openai/resources/chat/completions";
-import type {ExecutionContext, LLMInput, LLMOutput} from "../types.js";
+import type {LLMInput, LLMOutput, RunContext} from "../types.js";
 import { BaseTool } from "./base-tool.js";
 import { extractTextContent, getLlmModel, getOpenAiClient } from "./llm-client.js";
 import { DEFAULT_LLM_MAX_TOKENS_PER_CALL, trackLlmTokens } from "./llm-budget.js";
@@ -24,7 +24,7 @@ export class LlmGenerateTextTool extends BaseTool<"llm.generateText", LLMInput, 
   readonly name = "llm.generateText";
   readonly description = "Generates structured or freeform text with OpenAI chat completions.";
 
-  protected async execute(input: LLMInput, context: ExecutionContext): Promise<LLMOutput> {
+  protected async execute(input: LLMInput, context: RunContext): Promise<LLMOutput> {
     const prompt = input.messages
       .filter((message) => message.role === "user")
       .map((message) => message.content)

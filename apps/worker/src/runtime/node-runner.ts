@@ -12,7 +12,7 @@ import type {
   TransformNode,
   ToolNode
 } from "@personal-agent-os/shared";
-import type {ExecutionContext, LLMOutput} from "../../../../packages/agent-sdk/src/types.js";
+import type {LLMOutput, RunContext} from "@personal-agent-os/agent-sdk";
 import { validateSchema } from "./schema-utils.js";
 
 export interface NodeRunnerResult {
@@ -161,7 +161,7 @@ export async function callLLM(
     response_format: "json";
     schema: JSONSchema;
     input: Record<string, unknown>;
-    context: ExecutionContext;
+    context: RunContext;
     model?: string;
   }
 ): Promise<LLMOutput> {
@@ -218,7 +218,7 @@ export const __test__ = {
 export async function runLLMNode(
   node: LLMNode | EvaluatorNode,
   input: Record<string, unknown>,
-  context: ExecutionContext
+  context: RunContext
 ): Promise<LLMOutput> {
   const prompt = renderTemplate(node.promptTemplate, input);
   let activePrompt = prompt;
@@ -263,7 +263,7 @@ ${schemaToExample(node.output.schema)}`;
 export async function runEvaluatorNode(
   node: EvaluatorNode,
   input: Record<string, unknown>,
-  context: ExecutionContext
+  context: RunContext
 ): Promise<EvaluationResult> {
   const llmOutput = await runLLMNode(node, input, context);
   const result = llmOutput.parsed as EvaluationResult;
@@ -299,7 +299,7 @@ export async function runNode(
   node: AgentNode,
   input: Record<string, unknown>,
   retryCount: number,
-  context: ExecutionContext
+  context: RunContext
 ): Promise<NodeRunnerResult> {
   const startedAt = Date.now();
   validateSchema(input, node.input?.schema);

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createLlmBudget } from "../../src/tools/llm-budget.js";
 import { LlmGenerateTextTool } from "../../src/tools/llm-generate-text-tool.js";
 import { resetOpenAiClientForTests } from "../../src/tools/llm-client.js";
-import type { ExecutionContext } from "../../src/types.js";
+import type { RunContext } from "../../src/types.js";
 
 const createCompletion = vi.fn();
 
@@ -18,19 +18,10 @@ vi.mock("openai", () => {
   };
 });
 
-function createContext(): ExecutionContext {
+function createContext(): RunContext {
   return {
     registry: {
       execute: vi.fn()
-    },
-    workingState: {
-      data: {},
-      diagnostics: {
-        usedFallbacks: [],
-        warnings: [],
-        constraintResults: {},
-        signals: {}
-      }
     },
     now: () => "2026-04-11T00:00:00.000Z",
     logger: {

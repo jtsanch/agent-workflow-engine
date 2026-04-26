@@ -29,7 +29,6 @@ export type AgentNodeType =
     | "evaluator"
     | "condition";
 
-export type AgentEdgeType = "data" | "feedback" | "control" | "context";
 
 export type JsonSchemaType =
     | "string"
@@ -233,22 +232,22 @@ export type AgentNode =
     | EvaluatorNode
     | ConditionNode;
 
-export interface AgentEdge {
-  id: string;
-  from: string;
-  to: string;
-  type: AgentEdgeType;
-  label?: string;
-}
-
 export interface AgentDAG {
   id: string;
   version: string;
   name: string;
   description?: string;
   nodes: AgentNode[];
-  edges: AgentEdge[];
 }
+
+export type CompiledDAG = {
+  nodes: AgentNode[];
+  nodeMap: Map<string, AgentNode>;
+  graph: {
+    forward: Record<string, Set<string>>;
+    reverse: Record<string, Set<string>>;
+  };
+};
 
 export interface AlertPreference {
   id: string;

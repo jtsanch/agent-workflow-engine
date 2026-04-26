@@ -15,9 +15,22 @@ type CompatExecutionContext = RunContext & {
     nodeOutputs?: Record<string, NodeOutputEntry[]>;
 };
 
-function getExitNodeIds(dag: AgentDAG): string[] {
+function getDependencyNodeIds(node: AgentNode): string[] {
+    return (node.input?.bindings ?? [])
+        .flatMap((binding) => {
+            if (binding.ref.source !== "node_output") {
+                return [];
+            }
+
+            return [binding.ref.nodeId];
+        });
+}
+
+function getTerminalNodeIds(dag: AgentDAG): string[] {
     return dag.nodes
-        .filter((node) => !dag.edges.some((edge) => edge.from === node.id))
+        .filter((node) => !dag.nodes.some((candidate) => {
+            return getDependencyNodeIds(candidate).includes(node.id);
+        }))
         .map((node) => node.id)
         .sort((left, right) => left.localeCompare(right));
 }
@@ -40,7 +53,6 @@ function resolveNodeInput(
     node: AgentNode,
     jobInputs: Record<string, unknown>,
     outputs: Map<string, NodeOutput>,
-    context: CompatExecutionContext
 ): Record<string, unknown> {
     const result: Record<string, unknown> = {};
 
@@ -138,19 +150,18 @@ export async function executeDagCompat(
 ): Promise<ExecutionResult> {
     const outputs = new Map<string, NodeOutput>();
     const completed = new Set<string>();
-    const exitNodeIds = getExitNodeIds(dag);
+    const terminalNodeIds = getTerminalNodeIds(dag);
     const nodeExecutions: NodeExecution[] = [];
     const toolInvocations: ToolInvocation[] = [];
     const nodeFeedback: NodeFeedback[] = [];
 
-    while (!exitNodeIds.every((nodeId) => completed.has(nodeId))) {
+    while (!terminalNodeIds.every((nodeId) => completed.has(nodeId))) {
         const runnable = dag.nodes.filter((node) => {
             if (completed.has(node.id)) {
                 return false;
             }
 
-            const incoming = dag.edges.filter((edge) => (edge.type ?? "data") === "data" && edge.to === node.id);
-            return incoming.every((edge) => completed.has(edge.from));
+            return getDependencyNodeIds(node).every((nodeId) => completed.has(nodeId));
         });
 
         if (runnable.length === 0) {
@@ -159,7 +170,7 @@ export async function executeDagCompat(
 
         for (const node of runnable) {
             const startedAt = Date.now();
-            const input = resolveNodeInput(node, jobInputs, outputs, context);
+            const input = resolveNodeInput(node, jobInputs, outputs);
             let result: unknown;
             let feedback: NodeFeedback | undefined;
 
@@ -231,9 +242,9 @@ export async function executeDagCompat(
         }
     }
 
-    if (exitNodeIds.length === 1) {
+    if (terminalNodeIds.length === 1) {
         return {
-            finalOutput: outputs.get(exitNodeIds[0])?.data,
+            finalOutput: outputs.get(terminalNodeIds[0])?.data,
             nodeExecutions,
             toolInvocations,
             nodeFeedback,
@@ -243,7 +254,7 @@ export async function executeDagCompat(
 
     return {
         finalOutput: Object.fromEntries(
-            exitNodeIds.map((nodeId) => [nodeId, outputs.get(nodeId)?.data])
+            terminalNodeIds.map((nodeId) => [nodeId, outputs.get(nodeId)?.data])
         ),
         nodeExecutions,
         toolInvocations,

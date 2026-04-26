@@ -15,7 +15,6 @@ type DagNodeLike = {
 
 type DagLike = {
   nodes: DagNodeLike[];
-  edges: Array<{ from: string; to: string; type?: string }>;
 };
 
 const GENERIC_FIELD_NAMES = new Set(["text", "data", "output"]);
@@ -196,22 +195,20 @@ export function validateDag(dag: DagLike): void {
     validateTransformNode(node);
   }
 
-  for (const edge of dag.edges.filter((edge) => (edge.type ?? "data") === "data")) {
-    const fromNode = nodesById.get(edge.from);
-    const toNode = nodesById.get(edge.to);
-    if (!fromNode || !toNode) {
-      throw new Error(`Invalid edge: ${edge.from} -> ${edge.to}`);
-    }
+  for (const toNode of dag.nodes) {
+    for (const binding of toNode.input?.bindings ?? []) {
+      if (binding.ref.source !== "node_output") {
+        continue;
+      }
 
-    const bindings = (toNode.input?.bindings ?? []).filter((binding) => {
-      return binding.ref.source === "node_output" && binding.ref.nodeId === fromNode.id;
-    });
+      const fromNode = nodesById.get(binding.ref.nodeId);
+      if (!fromNode) {
+        throw new Error(`Invalid edge: ${binding.ref.nodeId} -> ${toNode.id}`);
+      }
 
-    for (const binding of bindings) {
-      const refPath = "path" in binding.ref ? binding.ref.path : undefined;
       const sourceSchema = getSchemaByPath(
         fromNode.output.schema,
-        refPath ? refPath.split(".") : []
+        binding.ref.path ? binding.ref.path.split(".") : []
       );
       const targetSchema = getSchemaByPath(toNode.input?.schema, [binding.key]);
 

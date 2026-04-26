@@ -22,12 +22,12 @@ describe("ExecutionState", () => {
           version: "1.0.0",
           type: "transform",
           name: "Finish",
+          input: {
+            bindings: [{ key: "start", ref: { source: "node_output", nodeId: "start" } }]
+          },
           run: () => ({}),
           output: { schema: { type: "object", additionalProperties: true } }
         }
-      ],
-      edges: [
-        { id: "start_to_finish", from: "start", to: "finish", type: "data" }
       ]
     };
     const state = new ExecutionState({ email: "demo@example.com" }, dag);
@@ -122,7 +122,17 @@ describe("ExecutionState", () => {
       status: "pending",
       retryCount: 0
     });
-    expect(state.nodeOutputs["node-instance-a"]).toBeUndefined();
-    expect(state.nodeOutputs.b).toBeUndefined();
+    expect(state.nodeOutputs["node-instance-a"]).toEqual([
+      expect.objectContaining({
+        data: { value: 1 },
+        success: true
+      })
+    ]);
+    expect(state.nodeOutputs.b).toEqual([
+      expect.objectContaining({
+        data: { value: 2 },
+        success: true
+      })
+    ]);
   });
 });

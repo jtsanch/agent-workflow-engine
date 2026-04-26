@@ -1,4 +1,4 @@
-import type { DataRef, InputBinding, NodeOutput, NodeOutputEntry } from "@personal-agent-os/shared";
+import type { DataRef, InputBinding } from "@personal-agent-os/shared";
 import {ExecutionState} from './execution-state.js';
 
 export function resolveInputBindings(

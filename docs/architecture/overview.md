@@ -53,7 +53,6 @@ A workflow graph with:
 
 - `nodes`
 - `edges`
-- `entryNodeIds`
 - `exitNodeId`
 
 ### AgentNode

@@ -202,12 +202,19 @@ export function RunsPage() {
   }, [nodeExecutionById, nodeFeedbackByNodeId, selectedAgent]);
 
   const workflowEdges: WorkflowEdge[] = useMemo(
-    () =>
-      selectedAgent?.dag.edges.map((edge) => ({
-        from: edge.from,
-        to: edge.to,
-        kind: edge.type
-      })) ?? [],
+    () => selectedAgent?.dag.nodes.flatMap((node) =>
+      (node.input?.bindings ?? []).flatMap((binding) => {
+        if (binding.ref.source !== "node_output") {
+          return [];
+        }
+
+        return [{
+          from: binding.ref.nodeId,
+          to: node.id,
+          kind: "data" as const
+        }];
+      })
+    ) ?? [],
     [selectedAgent]
   );
 

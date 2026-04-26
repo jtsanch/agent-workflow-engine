@@ -76,8 +76,7 @@ describe("retry-manager", () => {
           id: "dag-no-retry-policy",
           version: "1.0.0",
           name: "No Retry Policy DAG",
-          nodes: [evaluatorWithoutRetryPolicy],
-          edges: []
+          nodes: [evaluatorWithoutRetryPolicy]
         },
         evaluatorWithoutRetryPolicy,
         {
@@ -123,22 +122,49 @@ describe("retry-manager", () => {
       nodes: [
         retryingNode,
         { id: "draft", version: "1.0.0", type: "transform", name: "Draft", run: () => ({}), output: { schema: { type: "object", additionalProperties: true } } },
-        { id: "summary", version: "1.0.0", type: "transform", name: "Summary", run: () => ({}), output: { schema: { type: "object", additionalProperties: true } } },
-        { id: "review", version: "1.0.0", type: "transform", name: "Review", run: () => ({}), output: { schema: { type: "object", additionalProperties: true } } },
-        { id: "final", version: "1.0.0", type: "transform", name: "Final", run: () => ({}), output: { schema: { type: "object", additionalProperties: true } } }
-      ],
-      edges: [
-        { id: "a", from: "draft", to: "summary", type: "data" },
-        { id: "b", from: "draft", to: "review", type: "data" },
-        { id: "c", from: "summary", to: "final", type: "data" },
-        { id: "d", from: "review", to: "final", type: "data" }
+        {
+          id: "summary",
+          version: "1.0.0",
+          type: "transform",
+          name: "Summary",
+          input: {
+            bindings: [{ key: "draft", ref: { source: "node_output", nodeId: "draft" } }]
+          },
+          run: () => ({}),
+          output: { schema: { type: "object", additionalProperties: true } }
+        },
+        {
+          id: "review",
+          version: "1.0.0",
+          type: "transform",
+          name: "Review",
+          input: {
+            bindings: [{ key: "draft", ref: { source: "node_output", nodeId: "draft" } }]
+          },
+          run: () => ({}),
+          output: { schema: { type: "object", additionalProperties: true } }
+        },
+        {
+          id: "final",
+          version: "1.0.0",
+          type: "transform",
+          name: "Final",
+          input: {
+            bindings: [
+              { key: "summary", ref: { source: "node_output", nodeId: "summary" } },
+              { key: "review", ref: { source: "node_output", nodeId: "review" } }
+            ]
+          },
+          run: () => ({}),
+          output: { schema: { type: "object", additionalProperties: true } }
+        }
       ]
     };
 
     expect(__test__.getDownstreamNodes("draft", dag).sort()).toEqual(["final", "review", "summary"]);
   });
 
-  it("marks the evaluator-provided retry target for retry and clears its downstream outputs", () => {
+  it("marks the evaluator-provided retry target for retry without clearing output history", () => {
     const dag: AgentDAG = {
       id: "dag-test",
       version: "1.0.0",
@@ -177,7 +203,13 @@ describe("retry-manager", () => {
             enforcement: "strict"
           }
         },
-        retryingNode,
+        {
+          ...retryingNode,
+          input: {
+            schema: retryingNode.input?.schema,
+            bindings: [{ key: "draftSummary", ref: { source: "node_output", nodeId: "draft", path: "planSummary" } }]
+          }
+        },
         {
           id: "summary",
           version: "1.0.0",
@@ -191,7 +223,8 @@ describe("retry-manager", () => {
               },
               required: ["planSummary"],
               additionalProperties: false
-            }
+            },
+            bindings: [{ key: "planSummary", ref: { source: "node_output", nodeId: "draft", path: "planSummary" } }]
           },
           run: async (input) => ({ draftSummary: input.planSummary }),
           output: {
@@ -205,10 +238,6 @@ describe("retry-manager", () => {
             }
           }
         }
-      ],
-      edges: [
-        { id: "edge_draft_review", from: "draft", to: "reviewer", type: "data" },
-        { id: "edge_draft_summary", from: "draft", to: "summary", type: "data" }
       ]
     };
     const feedback: NodeFeedback = {
@@ -245,9 +274,9 @@ describe("retry-manager", () => {
 
     expect(targets).toEqual(["draft", "reviewer", "summary"]);
     expect(state.isRetryPending("draft")).toBe(true);
-    expect(state.getNodeOutputs("draft")).toBeUndefined();
-    expect(state.getNodeOutputs("summary")).toBeUndefined();
-    expect(state.getNodeOutputs("reviewer")).toBeUndefined();
+    expect(state.getNodeOutputs("draft")).toEqual([{ data: { planSummary: "Draft v1" }, artifacts: [] }]);
+    expect(state.getNodeOutputs("summary")).toEqual([{ data: { draftSummary: "Draft v1" }, artifacts: [] }]);
+    expect(state.getNodeOutputs("reviewer")).toEqual([{ data: { score: 0.4 }, artifacts: [] }]);
     expect(feedback.targetNodeId).toBe("draft");
   });
 
@@ -256,8 +285,7 @@ describe("retry-manager", () => {
       id: "dag-no-feedback",
       version: "1.0.0",
       name: "No Feedback DAG",
-      nodes: [retryingNode],
-      edges: []
+      nodes: [retryingNode]
     };
 
     const state = new ExecutionState({});
@@ -307,9 +335,15 @@ describe("retry-manager", () => {
           name: "Retry Limit DAG",
           nodes: [
             retryingNode,
-            { id: "draft", version: "1.0.0", type: "transform", name: "Draft", run: () => ({}), output: { schema: { type: "object", additionalProperties: true } } }
-          ],
-          edges: [{ id: "edge_1", from: "draft", to: "reviewer", type: "data" }]
+            {
+              id: "draft",
+              version: "1.0.0",
+              type: "transform",
+              name: "Draft",
+              run: () => ({}),
+              output: { schema: { type: "object", additionalProperties: true } }
+            }
+          ]
         },
         retryingNode,
         {

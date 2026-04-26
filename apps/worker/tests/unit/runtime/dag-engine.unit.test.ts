@@ -148,14 +148,16 @@ describe("dag-engine helpers", () => {
       nodes: [
         createTransformNode("b_retry"),
         createTransformNode("a_entry"),
-        createTransformNode("c_child")
-      ],
-      edges: [
-        { id: "edge_1", from: "a_entry", to: "c_child", type: "data" }
+        {
+          ...createTransformNode("c_child"),
+          input: {
+            bindings: [{ key: "a", ref: { source: "node_output", nodeId: "a_entry" } }]
+          }
+        }
       ]
     };
 
-    const state = new ExecutionState({});
+    const state = new ExecutionState({}, dag);
     state.markForRetry("b_retry");
 
     expect(__test__.getRunnableNodes(dag, state).map((node) => node.id)).toEqual([
@@ -173,11 +175,10 @@ describe("dag-engine helpers", () => {
         createTransformNode("done"),
         createTransformNode("running"),
         createTransformNode("ready")
-      ],
-      edges: []
+      ]
     };
 
-    const state = new ExecutionState({});
+    const state = new ExecutionState({}, dag);
     state.store("done", { data: { ok: true }, artifacts: [] });
     state.markRunning("running");
 
@@ -288,8 +289,7 @@ describe("dag-engine helpers", () => {
       id: "dag_skip",
       version: "1.0.0",
       name: "Skip Retry DAG",
-      nodes: [createToolNode("lookup")],
-      edges: []
+      nodes: [createToolNode("lookup")]
     };
 
     const state = new ExecutionState({});
@@ -321,8 +321,7 @@ describe("dag-engine helpers", () => {
       id: "dag_no_retry",
       version: "1.0.0",
       name: "No Retry DAG",
-      nodes: [evaluator, createTransformNode("draft")],
-      edges: [{ id: "feedback_1", from: "review", to: "draft", type: "feedback" }]
+      nodes: [evaluator, createTransformNode("draft")]
     };
     const feedback: NodeFeedback = {
       id: "feedback_evt_1",
@@ -365,19 +364,25 @@ describe("dag-engine helpers", () => {
     expect(feedback.targetNodeId).toBe("");
   });
 
-  it("schedules retries for the evaluator retry target and clears state node outputs", () => {
+  it("schedules retries for the evaluator retry target without clearing state node outputs", () => {
     const dag: AgentDAG = {
       id: "dag_1",
       version: "1.0.0",
       name: "Retry DAG",
       nodes: [
         createTransformNode("draft"),
-        createEvaluatorNode(),
-        createTransformNode("publish")
-      ],
-      edges: [
-        { id: "data_1", from: "draft", to: "review", type: "data" },
-        { id: "data_2", from: "review", to: "publish", type: "data" }
+        {
+          ...createEvaluatorNode(),
+          input: {
+            bindings: [{ key: "draft", ref: { source: "node_output", nodeId: "draft" } }]
+          }
+        },
+        {
+          ...createTransformNode("publish"),
+          input: {
+            bindings: [{ key: "review", ref: { source: "node_output", nodeId: "review" } }]
+          }
+        }
       ]
     };
 
@@ -392,7 +397,7 @@ describe("dag-engine helpers", () => {
       createdAt: "2026-04-10T00:00:00.000Z"
     };
 
-    const state = new ExecutionState({});
+    const state = new ExecutionState({}, dag);
     const context = createContext();
     state.store("draft", { data: { text: "old draft" }, artifacts: [] });
     state.store("review", { data: { score: 0.2 }, artifacts: [] });
@@ -426,13 +431,28 @@ describe("dag-engine helpers", () => {
 
     expect(state.isRetryPending("draft")).toBe(true);
     expect(state.getRetryCount("draft")).toBe(1);
-    expect(state.getNodeOutputs("draft")).toBeUndefined();
-    expect(state.getNodeOutputs("review")).toBeUndefined();
-    expect(state.getNodeOutputs("publish")).toBeUndefined();
+    expect(state.getNodeOutputs("draft")).toEqual([{ data: { text: "old draft" }, artifacts: [] }]);
+    expect(state.getNodeOutputs("review")).toEqual([{ data: { score: 0.2 }, artifacts: [] }]);
+    expect(state.getNodeOutputs("publish")).toEqual([{ data: { ok: true }, artifacts: [] }]);
     expect(feedback.targetNodeId).toBe("draft");
-    expect(state.nodeOutputs.draft).toBeUndefined();
-    expect(state.nodeOutputs.review).toBeUndefined();
-    expect(state.nodeOutputs.publish).toBeUndefined();
+    expect(state.nodeOutputs.draft).toEqual([
+      expect.objectContaining({
+        data: { text: "old draft" },
+        success: true
+      })
+    ]);
+    expect(state.nodeOutputs.review).toEqual([
+      expect.objectContaining({
+        data: { score: 0.2 },
+        success: true
+      })
+    ]);
+    expect(state.nodeOutputs.publish).toEqual([
+      expect.objectContaining({
+        data: { ok: true },
+        success: true
+      })
+    ]);
   });
 
   it("throws when runnable nodes declare conflicting writes", () => {
@@ -480,8 +500,7 @@ describe("dag-engine helpers", () => {
       id: "dag_empty_targets",
       version: "1.0.0",
       name: "Empty Targets DAG",
-      nodes: [evaluator],
-      edges: []
+      nodes: [evaluator]
     };
     const feedback: NodeFeedback = {
       id: "feedback_evt_1",
@@ -572,8 +591,7 @@ describe("dag-engine helpers", () => {
       id: "dag_tools",
       version: "1.0.0",
       name: "Tools DAG",
-      nodes: [createToolNode("lookup")],
-      edges: []
+      nodes: [createToolNode("lookup")]
     };
     const nodeExecutions: NodeExecution[] = [
       {
@@ -699,8 +717,7 @@ describe("dag-engine helpers", () => {
           id: "dag_single",
           version: "1.0.0",
           name: "Single Exit",
-          nodes: [createTransformNode("a")],
-          edges: []
+          nodes: [createTransformNode("a")]
         },
         state
       )
@@ -712,8 +729,7 @@ describe("dag-engine helpers", () => {
           id: "dag_multi",
           version: "1.0.0",
           name: "Multi Exit",
-          nodes: [createTransformNode("a"), createTransformNode("b")],
-          edges: []
+          nodes: [createTransformNode("a"), createTransformNode("b")]
         },
         state
       )
@@ -734,8 +750,7 @@ describe("executeDAG", () => {
       id: "dag_blocked",
       version: "1.0.0",
       name: "Blocked DAG",
-      nodes: [createTransformNode("blocked")],
-      edges: []
+      nodes: [createTransformNode("blocked")]
     };
     runNodeMock.mockResolvedValueOnce({
       output: {
@@ -781,8 +796,7 @@ describe("executeDAG", () => {
       id: "dag_error",
       version: "1.0.0",
       name: "Error DAG",
-      nodes: [createToolNode("lookup")],
-      edges: []
+      nodes: [createToolNode("lookup")]
     };
 
     runNodeMock.mockRejectedValueOnce(new Error("node failed"));

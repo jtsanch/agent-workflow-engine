@@ -1,5 +1,5 @@
 import type {
-  AgentDAG,
+  AgentDAG, CompiledDAG,
   NodeInstance,
   NodeOutput,
   NodeOutputEntry,
@@ -13,7 +13,7 @@ export class ExecutionState {
   readonly nodeOutputs: Record<string, NodeOutputEntry[]> = {};
   readonly nodeInstances: Record<string, NodeInstance> = {};
 
-  constructor(initialInputs: Record<string, unknown>, dag?: AgentDAG) {
+  constructor(initialInputs: Record<string, unknown>, dag?: AgentDAG | CompiledDAG) {
     this.input = initialInputs;
     for (const node of dag?.nodes ?? []) {
       this.nodeInstances[node.id] = {
@@ -150,7 +150,6 @@ export class ExecutionState {
       status: "pending",
       retryCount
     };
-    delete this.nodeOutputs[nodeInstanceId];
   }
 
   clearSubgraph(nodeIds: string[]): void {
@@ -160,7 +159,6 @@ export class ExecutionState {
         status: "pending",
         retryCount: this.runtime[nodeInstanceId]?.retryCount ?? 0
       };
-      delete this.nodeOutputs[nodeInstanceId];
     }
   }
 
@@ -169,11 +167,21 @@ export class ExecutionState {
     return runtime.status === "pending" && runtime.retryCount > 0;
   }
 
-  isComplete(dag: AgentDAG): boolean {
-    const exitNodeIds = dag.nodes
-      .filter((node) => !dag.edges.some((edge) => edge.from === node.id))
+  isComplete(dag: AgentDAG | CompiledDAG): boolean {
+    const terminalNodeIds = dag.nodes
+      .filter((node) => {
+        if ("graph" in dag) {
+          return (dag.graph.forward[node.id]?.size ?? 0) === 0;
+        }
+
+        return !dag.nodes.some((candidate) =>
+          (candidate.input?.bindings ?? []).some(
+            (binding) => binding.ref.source === "node_output" && binding.ref.nodeId === node.id
+          )
+        );
+      })
       .map((node) => node.id);
-    return exitNodeIds.every((nodeId) => this.ensureRuntime(nodeId).status === "completed");
+    return terminalNodeIds.every((nodeId) => this.runtime[nodeId]?.status === "completed");
   }
 
   private ensureRuntime(nodeId: string): NodeRuntime {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { weeklyGroceryPlanner } from "@personal-agent-os/agent-sdk";
 import { executeDAG } from "../../../src/runtime/dag-engine.js";
-import type { ExecutionContext } from "../../../../../packages/agent-sdk/src/types.js";
+import type { ExecutionContext } from "@personal-agent-os/agent-sdk";
 
 const context: ExecutionContext = {
   registry: {

@@ -1,5 +1,5 @@
-import { createToolRegistry as createSdkToolRegistry } from "../../../../packages/agent-sdk/src/tool-registry.js";
-import type { ToolRegistry } from "../../../../packages/agent-sdk/src/types.js";
+import { createToolRegistry as createSdkToolRegistry } from "@personal-agent-os/agent-sdk";
+import type { ToolRegistry } from "@personal-agent-os/agent-sdk";
 
 export function createToolRegistry(): ToolRegistry {
   return createSdkToolRegistry();

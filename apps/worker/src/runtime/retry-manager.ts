@@ -1,15 +1,19 @@
 import type { AgentDAG, AgentNode, EvaluationResult, EvaluatorNode, NodeFeedback } from "@personal-agent-os/shared";
+import { compileDAG } from "./compile-dag.js";
 import { ExecutionState } from "./execution-state.js";
+import type { CompiledDAG } from "./compiled-dag.js";
 
-export function getDownstreamNodes(nodeId: string, dag: AgentDAG, visited = new Set<string>()): string[] {
-  const outgoing = dag.edges
-      .filter(edge => (edge.type ?? "data") === "data" && edge.from === nodeId)
-      .map(edge => edge.to);
+export function getDownstreamNodes(
+  nodeId: string,
+  graph: CompiledDAG["graph"],
+  visited = new Set<string>()
+): string[] {
+  const outgoing = graph.forward[nodeId] ?? [];
 
   for (const next of outgoing) {
     if (!visited.has(next)) {
       visited.add(next);
-      getDownstreamNodes(next, dag, visited);
+      getDownstreamNodes(next, graph, visited);
     }
   }
 
@@ -34,24 +38,27 @@ export function shouldRetry(node: AgentNode, output: { data: unknown }): boolean
 }
 
 function resolveRetryTargetNodeId(
-  dag: AgentDAG,
+  dag: AgentDAG | CompiledDAG,
   evaluatorNode: EvaluatorNode,
   result: EvaluationResult
 ): string {
+  const compiledDAG = "graph" in dag ? dag : compileDAG(dag);
   const targetNodeId =
     typeof result.retryTargetNodeId === "string" && result.retryTargetNodeId.trim().length > 0
       ? result.retryTargetNodeId
       : evaluatorNode.id;
 
-  if (!dag.nodes.some((node) => node.id === targetNodeId)) {
-    throw new Error(`Retry target node "${targetNodeId}" requested by evaluator "${evaluatorNode.id}" was not found in DAG "${dag.id}"`);
+  if (!compiledDAG.nodeMap[targetNodeId]) {
+    throw new Error(
+      `Retry target node "${targetNodeId}" requested by evaluator "${evaluatorNode.id}" was not found`
+    );
   }
 
   return targetNodeId;
 }
 
 export function applyEvaluatorRetry(
-  dag: AgentDAG,
+  dag: AgentDAG | CompiledDAG,
   evaluatorNode: EvaluatorNode,
   output: { data: unknown },
   feedback: NodeFeedback,
@@ -66,14 +73,15 @@ export function applyEvaluatorRetry(
     return [];
   }
 
+  const compiledDAG = "graph" in dag ? dag : compileDAG(dag);
   const maxRetries = evaluatorNode.execution.retryPolicy.maxRetries;
-  const targetNodeId = resolveRetryTargetNodeId(dag, evaluatorNode, result);
+  const targetNodeId = resolveRetryTargetNodeId(compiledDAG, evaluatorNode, result);
 
   if (state.getRetryCount(targetNodeId) >= maxRetries) {
     return [];
   }
 
-  const downstreamNodeIds = getDownstreamNodes(targetNodeId, dag);
+  const downstreamNodeIds = getDownstreamNodes(targetNodeId, compiledDAG.graph);
   state.clearSubgraph([targetNodeId, ...downstreamNodeIds]);
   state.markForRetry(targetNodeId);
   feedback.targetNodeId = targetNodeId;
@@ -82,5 +90,8 @@ export function applyEvaluatorRetry(
 }
 
 export const __test__ = {
-  getDownstreamNodes
+  getDownstreamNodes: (nodeId: string, dag: AgentDAG | CompiledDAG) => {
+    const compiledDAG = "graph" in dag ? dag : compileDAG(dag);
+    return getDownstreamNodes(nodeId, compiledDAG.graph);
+  }
 };

@@ -245,8 +245,6 @@ export interface AgentDAG {
   description?: string;
   nodes: AgentNode[];
   edges: AgentEdge[];
-  entryNodeIds: string[];
-  exitNodeIds: string[];
 }
 
 export interface AlertPreference {

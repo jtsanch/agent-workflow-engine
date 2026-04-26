@@ -247,8 +247,16 @@ export interface AgentDAG {
   name: string;
   description?: string;
   nodes: AgentNode[];
-  edges: AgentEdge[];
 }
+
+export type CompiledDAG = {
+  nodes: AgentNode[];
+  nodeMap: Record<string, AgentNode>;
+  graph: {
+    forward: Record<string, string[]>;
+    reverse: Record<string, string[]>;
+  };
+};
 
 export interface AlertPreference {
   id: string;

@@ -8,6 +8,8 @@ import type {
   ToolInvocation,
 } from "@personal-agent-os/shared";
 import type { RunContext } from "@personal-agent-os/agent-sdk";
+import type { CompiledDAG } from "./compiled-dag.js";
+import { compileDAG } from "./compile-dag.js";
 import { ExecutionState } from "./execution-state.js";
 import { resolveInputBindings } from "./input-resolver.js";
 import { runNode } from "./node-runner.js";
@@ -37,27 +39,56 @@ export class DAGExecutionError extends Error {
   }
 }
 
-function getExitNodeIds(dag: AgentDAG): string[] {
+function toValidationDag(dag: AgentDAG | CompiledDAG): AgentDAG {
+  if (!("graph" in dag)) {
+    return dag;
+  }
+
+  return {
+    id: "compiled",
+    version: "compiled",
+    name: "compiled",
+    nodes: dag.nodes
+  };
+}
+
+function getTerminalNodeIds(dag: AgentDAG | CompiledDAG): string[] {
   return dag.nodes
-    .filter((node) => !dag.edges.some((edge) => edge.from === node.id))
+    .filter((node) => {
+      if ("graph" in dag) {
+        return (dag.graph.forward[node.id] ?? []).length === 0;
+      }
+
+      return !dag.nodes.some((candidate) =>
+        (candidate.input?.bindings ?? []).some(
+          (binding) => binding.ref.source === "node_output" && binding.ref.nodeId === node.id
+        )
+      );
+    })
     .map((node) => node.id)
     .sort((left, right) => left.localeCompare(right));
 }
 
-function getRunnableNodes(dag: AgentDAG, state: ExecutionState): AgentNode[] {
-  return dag.nodes
+function dependenciesSatisfied(
+  nodeId: string,
+  compiledDAG: CompiledDAG,
+  state: ExecutionState
+): boolean {
+  return compiledDAG.graph.reverse[nodeId].every(
+    (depId) => state.runtime[depId]?.status === "completed"
+  );
+}
+
+function getRunnableNodes(dag: AgentDAG | CompiledDAG, state: ExecutionState): AgentNode[] {
+  const compiledDAG = "graph" in dag ? dag : compileDAG(dag);
+
+  return compiledDAG.nodes
     .filter((node) => {
-      if ((state.runtime[state.getNodeInstanceId(node.id)]?.status ?? "pending") !== "pending") {
+      if (state.runtime[state.getNodeInstanceId(node.id)]?.status !== "pending") {
         return false;
       }
 
-      const incomingDataEdges = dag.edges.filter((edge) => {
-        return (edge.type ?? "data") === "data" && edge.to === node.id;
-      });
-
-      return incomingDataEdges.every(
-        (edge) => state.runtime[state.getNodeInstanceId(edge.from)]?.status === "completed"
-      );
+      return dependenciesSatisfied(node.id, compiledDAG, state);
     })
     .sort((left, right) => left.id.localeCompare(right.id));
 }
@@ -209,7 +240,7 @@ function collectOutputsForTests(
 }
 
 function scheduleRetries(
-  dag: AgentDAG,
+  dag: AgentDAG | CompiledDAG,
   executedNodes: ExecutedNodeResult[],
   state: ExecutionState,
 ): void {
@@ -254,7 +285,7 @@ function toToolInvocationResponse(output: NodeOutput | undefined): JsonObject | 
   return toJsonObject({ value: output.data ?? null });
 }
 
-function collectToolInvocations(dag: AgentDAG, nodeExecutions: NodeExecution[]): ToolInvocation[] {
+function collectToolInvocations(dag: AgentDAG | CompiledDAG, nodeExecutions: NodeExecution[]): ToolInvocation[] {
   const toolNodesById = new Map(
     dag.nodes
       .filter((node): node is Extract<AgentNode, { type: "tool" }> => node.type === "tool")
@@ -298,20 +329,20 @@ export type ExecutionResult = {
 export type DAGExecutionResult = ExecutionResult;
 
 export async function executeDAG(
-  dag: AgentDAG,
+  dag: AgentDAG | CompiledDAG,
   initialInputs: Record<string, unknown>,
   jobRunId: string,
   context: RunContext
 ): Promise<DAGExecutionResult> {
 
-  validateDag(dag);
+  validateDag(toValidationDag(dag));
 
   const state = new ExecutionState(initialInputs, dag);
   const nodeExecutions: NodeExecution[] = [];
   const nodeFeedback: NodeFeedback[] = [];
-  const exitNodeIds = getExitNodeIds(dag);
+  const terminalNodeIds = getTerminalNodeIds(dag);
 
-  while (!exitNodeIds.every((nodeId) => state.runtime[state.getNodeInstanceId(nodeId)]?.status === "completed")) {
+  while (!terminalNodeIds.every((nodeId) => state.runtime[nodeId]?.status === "completed")) {
     const runnableNodes = getRunnableNodes(dag, state);
     if (runnableNodes.length === 0) {
       break;
@@ -340,23 +371,33 @@ export async function executeDAG(
 }
 
 function collectFinalOutputs(
-    dag: AgentDAG,
+    dag: AgentDAG | CompiledDAG,
     state: ExecutionState
 ): unknown {
-  const exitNodeIds = dag.nodes
-    .filter((node) => !dag.edges.some((edge) => edge.from === node.id))
+  const terminalNodeIds = dag.nodes
+    .filter((node) => {
+      if ("graph" in dag) {
+        return (dag.graph.forward[node.id] ?? []).length === 0;
+      }
+
+      return !dag.nodes.some((candidate) =>
+        (candidate.input?.bindings ?? []).some(
+          (binding) => binding.ref.source === "node_output" && binding.ref.nodeId === node.id
+        )
+      );
+    })
     .map((node) => node.id)
     .sort((left, right) => left.localeCompare(right));
 
-  if (exitNodeIds.length === 1) {
-    const exitNodeOutputs = state.getNodeOutputs(exitNodeIds[0]) || [];
-    return exitNodeOutputs.length === 1 ? exitNodeOutputs[0].data : undefined;
+  if (terminalNodeIds.length === 1) {
+    const terminalNodeOutputs = state.getNodeOutputs(terminalNodeIds[0]) || [];
+    return terminalNodeOutputs.length === 1 ? terminalNodeOutputs[0].data : undefined;
   }
 
   return Object.fromEntries(
-    exitNodeIds.map((nodeId) => {
-      const exitNodeOutputs = state.getNodeOutputs(nodeId) || [];
-      const data = exitNodeOutputs.length === 1 ? exitNodeOutputs[0].data : undefined;
+    terminalNodeIds.map((nodeId) => {
+      const terminalNodeOutputs = state.getNodeOutputs(nodeId) || [];
+      const data = terminalNodeOutputs.length === 1 ? terminalNodeOutputs[0].data : undefined;
       return [nodeId, data];
     })
   );

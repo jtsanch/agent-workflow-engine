@@ -2,6 +2,7 @@ import { seedAgentDefinitions, createLlmBudget } from "@personal-agent-os/agent-
 import type { RunContext } from "@personal-agent-os/agent-sdk";
 import { createToolRegistry } from "../tools/registry.js";
 import type { Job } from "@personal-agent-os/shared";
+import { getOrCompileDAG } from "./compile-dag.js";
 import { executeDAG } from "./dag-engine.js";
 
 export async function runJob(job: Job) {
@@ -18,9 +19,10 @@ export async function runJob(job: Job) {
     logger: { info: () => undefined },
     llmBudget: createLlmBudget()
   };
+  const compiled = getOrCompileDAG(agentDefinition);
 
   const result = await executeDAG(
-    agentDefinition.dag,
+    compiled,
     job.inputs,
     `run_${job.id}`,
     context

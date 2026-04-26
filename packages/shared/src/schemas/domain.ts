@@ -122,19 +122,12 @@ export const agentNodeSchema = z.discriminatedUnion("type", [
   conditionNodeSchema
 ]);
 
-export const agentEdgeSchema = z.object({
-  from: z.string(),
-  to: z.string(),
-  type: agentEdgeTypeSchema.optional().default("data")
-});
-
 export const agentDagSchema = z.object({
   id: z.string(),
   version: z.string(),
   name: z.string(),
   description: z.string().optional(),
-  nodes: z.array(agentNodeSchema).min(1),
-  edges: z.array(agentEdgeSchema)
+  nodes: z.array(agentNodeSchema).min(1)
 });
 
 export const alertPreferenceSchema = z.object({

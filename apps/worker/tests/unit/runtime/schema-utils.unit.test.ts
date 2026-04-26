@@ -204,8 +204,7 @@ describe("validateDag", () => {
               }
             }
           }
-        ],
-        edges: []
+        ]
       })
     ).toThrow('Schema lint failed for bad_schema: Generic field name "output" is not allowed at output');
 
@@ -223,8 +222,7 @@ describe("validateDag", () => {
               }
             }
           }
-        ],
-        edges: []
+        ]
       })
     ).toThrow("Transform node bad_transform must be synchronous");
   });
@@ -237,11 +235,19 @@ describe("validateDag", () => {
             id: "from",
             type: "tool",
             output: { schema: { type: "object", properties: { value: { type: "string" } } } }
+          },
+          {
+            id: "to",
+            type: "tool",
+            input: {
+              schema: { type: "object", properties: { value: { type: "string" } } },
+              bindings: [{ key: "value", ref: { source: "node_output", nodeId: "missing" } }]
+            },
+            output: { schema: { type: "object", additionalProperties: true } }
           }
-        ],
-        edges: [{ from: "from", to: "missing" }]
+        ]
       })
-    ).toThrow("Invalid edge: from -> missing");
+    ).toThrow("Invalid edge: missing -> to");
 
     expect(() =>
       validateDag({
@@ -260,13 +266,12 @@ describe("validateDag", () => {
             },
             output: { schema: { type: "object", additionalProperties: true } }
           }
-        ],
-        edges: [{ from: "from", to: "to", type: "data" }]
+        ]
       })
     ).toThrow("Invalid edge: from -> to");
   });
 
-  it("allows data edges without bindings and nullish edge types", () => {
+  it("allows nodes without node_output bindings", () => {
     expect(() =>
       validateDag({
         nodes: [
@@ -281,8 +286,7 @@ describe("validateDag", () => {
             input: { schema: { type: "object", properties: { value: { type: "string" } } } },
             output: { schema: { type: "object", additionalProperties: true } }
           }
-        ],
-        edges: [{ from: "from", to: "to" }]
+        ]
       })
     ).not.toThrow();
   });

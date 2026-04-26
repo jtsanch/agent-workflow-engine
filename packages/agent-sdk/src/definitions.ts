@@ -1374,15 +1374,6 @@ Output JSON:
         },
         run: finalizePlanRun
       }, ["$state.finalizePlan"])
-    ],
-    edges: [
-      { id: "e1", from: "generateMeals", to: "estimateNutrition", type: "data" },
-      { id: "e2", from: "estimateNutrition", to: "normalizeMeals", type: "data" },
-      { id: "e3", from: "normalizeMeals", to: "aggregateIngredients", type: "data" },
-      { id: "e4", from: "aggregateIngredients", to: "convertToPurchasableUnits", type: "data" },
-      { id: "e5", from: "convertToPurchasableUnits", to: "calculateCosts", type: "data" },
-      { id: "e6", from: "calculateCosts", to: "validatePlan", type: "data" },
-      { id: "e7", from: "validatePlan", to: "finalizePlan", type: "data" }
     ]
   }
 });

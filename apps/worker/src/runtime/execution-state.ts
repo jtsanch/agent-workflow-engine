@@ -1,12 +1,11 @@
 import type {
-  AgentDAG,
+  AgentDAG, CompiledDAG,
   NodeInstance,
   NodeOutput,
   NodeOutputEntry,
   NodeRuntime
 } from "@personal-agent-os/shared";
 import { appendNodeOutput } from "@personal-agent-os/agent-sdk";
-import type { CompiledDAG } from "./compiled-dag.js";
 
 export class ExecutionState {
   readonly input: Record<string, unknown>;
@@ -172,7 +171,7 @@ export class ExecutionState {
     const terminalNodeIds = dag.nodes
       .filter((node) => {
         if ("graph" in dag) {
-          return (dag.graph.forward[node.id] ?? []).length === 0;
+          return (dag.graph.forward[node.id]?.size ?? 0) === 0;
         }
 
         return !dag.nodes.some((candidate) =>

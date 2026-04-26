@@ -53,7 +53,6 @@ function resolveNodeInput(
     node: AgentNode,
     jobInputs: Record<string, unknown>,
     outputs: Map<string, NodeOutput>,
-    context: CompatExecutionContext
 ): Record<string, unknown> {
     const result: Record<string, unknown> = {};
 
@@ -171,7 +170,7 @@ export async function executeDagCompat(
 
         for (const node of runnable) {
             const startedAt = Date.now();
-            const input = resolveNodeInput(node, jobInputs, outputs, context);
+            const input = resolveNodeInput(node, jobInputs, outputs);
             let result: unknown;
             let feedback: NodeFeedback | undefined;
 

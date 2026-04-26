@@ -1,16 +1,13 @@
-import type { AgentDAG, AgentDefinition } from "@personal-agent-os/shared";
-
-import { buildGraph } from "./build-graph.js";
-import type { CompiledDAG } from "./compiled-dag.js";
-
+import type {AgentDAG, AgentDefinition, CompiledDAG} from "@personal-agent-os/shared";
+import {buildGraph} from './build-graph.js';
 const compiledDagCache = new Map<string, CompiledDAG>();
 
 export function compileDAG(dag: AgentDAG): CompiledDAG {
   const graph = buildGraph(dag);
-  const nodeMap: CompiledDAG["nodeMap"] = {};
+  const nodeMap: CompiledDAG["nodeMap"] = new Map<string, AgentDAG["nodes"][number]>();
 
   for (const node of dag.nodes) {
-    nodeMap[node.id] = node;
+    nodeMap.set(node.id, node);
   }
 
   return {

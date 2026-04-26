@@ -1,14 +1,20 @@
-import type { AgentDAG, AgentNode, EvaluationResult, EvaluatorNode, NodeFeedback } from "@personal-agent-os/shared";
+import type {
+  AgentDAG,
+  AgentNode,
+  CompiledDAG,
+  EvaluationResult,
+  EvaluatorNode,
+  NodeFeedback
+} from "@personal-agent-os/shared";
 import { compileDAG } from "./compile-dag.js";
 import { ExecutionState } from "./execution-state.js";
-import type { CompiledDAG } from "./compiled-dag.js";
 
 export function getDownstreamNodes(
   nodeId: string,
   graph: CompiledDAG["graph"],
   visited = new Set<string>()
 ): string[] {
-  const outgoing = graph.forward[nodeId] ?? [];
+  const outgoing = graph.forward[nodeId] ?? new Set<string>();
 
   for (const next of outgoing) {
     if (!visited.has(next)) {
@@ -48,7 +54,7 @@ function resolveRetryTargetNodeId(
       ? result.retryTargetNodeId
       : evaluatorNode.id;
 
-  if (!compiledDAG.nodeMap[targetNodeId]) {
+  if (!compiledDAG.nodeMap.has(targetNodeId)) {
     throw new Error(
       `Retry target node "${targetNodeId}" requested by evaluator "${evaluatorNode.id}" was not found`
     );

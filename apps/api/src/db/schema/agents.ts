@@ -20,14 +20,6 @@ export const agentNodes = {
   retryPolicy: jsonb("retry_policy")
 };
 
-export const agentEdges = {
-  id: text("id").primaryKey(),
-  dagId: text("dag_id").notNull(),
-  fromNodeId: text("from_node_id").notNull(),
-  toNodeId: text("to_node_id").notNull(),
-  edgeType: text("edge_type").notNull()
-};
-
 export const jobDagVersions = {
   id: text("id").primaryKey(),
   jobId: text("job_id").notNull(),

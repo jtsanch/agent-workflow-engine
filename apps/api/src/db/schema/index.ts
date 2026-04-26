@@ -1,5 +1,5 @@
 import { pgTable } from "drizzle-orm/pg-core";
-import { agentDags, agentEdges, agentNodes, jobDagVersions } from "./agents.js";
+import { agentDags, agentNodes, jobDagVersions } from "./agents.js";
 import { jobAlertPreferences, jobs, jobSchedules } from "./jobs.js";
 import {
   feedbackEvents,
@@ -21,7 +21,6 @@ export const jobMemoriesTable = pgTable("job_memories", jobMemories);
 export const feedbackEventsTable = pgTable("feedback_events", feedbackEvents);
 export const agentDagsTable = pgTable("agent_dags", agentDags);
 export const agentNodesTable = pgTable("agent_nodes", agentNodes);
-export const agentEdgesTable = pgTable("agent_edges", agentEdges);
 export const jobDagVersionsTable = pgTable("job_dag_versions", jobDagVersions);
 export const nodeExecutionsTable = pgTable("node_executions", nodeExecutions);
 export const nodeFeedbackTable = pgTable("node_feedback", nodeFeedback);
@@ -37,7 +36,6 @@ export const schema = {
   feedbackEventsTable,
   agentDagsTable,
   agentNodesTable,
-  agentEdgesTable,
   jobDagVersionsTable,
   nodeExecutionsTable,
   nodeFeedbackTable

@@ -1,6 +1,6 @@
 import type {
   AgentDAG,
-  AgentNode,
+  AgentNode, CompiledDAG,
   JsonObject,
   NodeExecution,
   NodeFeedback,
@@ -8,7 +8,6 @@ import type {
   ToolInvocation,
 } from "@personal-agent-os/shared";
 import type { RunContext } from "@personal-agent-os/agent-sdk";
-import type { CompiledDAG } from "./compiled-dag.js";
 import { compileDAG } from "./compile-dag.js";
 import { ExecutionState } from "./execution-state.js";
 import { resolveInputBindings } from "./input-resolver.js";
@@ -56,7 +55,7 @@ function getTerminalNodeIds(dag: AgentDAG | CompiledDAG): string[] {
   return dag.nodes
     .filter((node) => {
       if ("graph" in dag) {
-        return (dag.graph.forward[node.id] ?? []).length === 0;
+        return (dag.graph.forward[node.id]?.size ?? 0) === 0;
       }
 
       return !dag.nodes.some((candidate) =>
@@ -74,9 +73,13 @@ function dependenciesSatisfied(
   compiledDAG: CompiledDAG,
   state: ExecutionState
 ): boolean {
-  return compiledDAG.graph.reverse[nodeId].every(
-    (depId) => state.runtime[depId]?.status === "completed"
-  );
+  for (const depId of compiledDAG.graph.reverse[nodeId] ?? []) {
+    if (state.runtime[depId]?.status !== "completed") {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function getRunnableNodes(dag: AgentDAG | CompiledDAG, state: ExecutionState): AgentNode[] {
@@ -377,7 +380,7 @@ function collectFinalOutputs(
   const terminalNodeIds = dag.nodes
     .filter((node) => {
       if ("graph" in dag) {
-        return (dag.graph.forward[node.id] ?? []).length === 0;
+        return (dag.graph.forward[node.id]?.size ?? 0) === 0;
       }
 
       return !dag.nodes.some((candidate) =>

@@ -50,9 +50,3 @@ export function createToolRegistry(): DefaultToolRegistry<ToolMap> {
 
   return registry;
 }
-
-export function defineTool<TInput extends object, TOutput extends object>(
-  definition: ToolDefinition<TInput, TOutput>
-): ToolDefinition<TInput, TOutput> {
-  return definition;
-}

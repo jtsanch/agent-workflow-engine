@@ -17,7 +17,7 @@ const userContext: UserContext = {
 
 const createJobInput: CreateJobInput = {
   agentDefinitionKey: "grocery-planner",
-  name: "Weekly Grocery",
+  name: "Daily Grocery",
   scheduleExpression: "cron(0 9 ? * SUN *)",
   timezone: "America/Los_Angeles",
   dagId: "dag_grocery_planner",

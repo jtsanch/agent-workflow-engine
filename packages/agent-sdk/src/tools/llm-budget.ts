@@ -1,8 +1,8 @@
-import type { ExecutionContext, LlmBudget } from "../types.js";
+import type { LlmBudget, RunContext } from "../types.js";
 
-export const DEFAULT_LLM_RUN_BUDGET = 5000;
-export const DEFAULT_LLM_WARNING_THRESHOLD = 2500;
-export const DEFAULT_LLM_MAX_TOKENS_PER_CALL = 800;
+export const DEFAULT_LLM_RUN_BUDGET = 10000;
+export const DEFAULT_LLM_WARNING_THRESHOLD = 5000;
+export const DEFAULT_LLM_MAX_TOKENS_PER_CALL = 2000;
 
 export function createLlmBudget(): LlmBudget {
   return {
@@ -13,7 +13,7 @@ export function createLlmBudget(): LlmBudget {
   };
 }
 
-export function trackLlmTokens(context: ExecutionContext, tokensUsed: number): void {
+export function trackLlmTokens(context: RunContext, tokensUsed: number): void {
   const budget = context.llmBudget;
   if (!budget || tokensUsed <= 0) {
     return;
@@ -34,7 +34,7 @@ export function trackLlmTokens(context: ExecutionContext, tokensUsed: number): v
   }
 }
 
-function logBudgetWarning(context: ExecutionContext, budget: LlmBudget): void {
+function logBudgetWarning(context: RunContext, budget: LlmBudget): void {
   const log = context.logger.warn ?? context.logger.info;
   log("LLM token usage is nearing the run budget", {
     consumedTokens: budget.consumedTokens,
@@ -43,7 +43,7 @@ function logBudgetWarning(context: ExecutionContext, budget: LlmBudget): void {
   });
 }
 
-function logBudgetExceeded(context: ExecutionContext, budget: LlmBudget): void {
+function logBudgetExceeded(context: RunContext, budget: LlmBudget): void {
   const log = context.logger.warn ?? context.logger.info;
   log("LLM token usage exceeded the run budget", {
     consumedTokens: budget.consumedTokens,

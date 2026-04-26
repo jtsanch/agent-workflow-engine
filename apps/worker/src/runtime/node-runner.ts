@@ -12,13 +12,20 @@ import type {
   TransformNode,
   ToolNode
 } from "@personal-agent-os/shared";
-import type {ExecutionContext, LLMOutput} from "@personal-agent-os/agent-sdk";
+import type {LLMOutput, RunContext} from "@personal-agent-os/agent-sdk";
 import { validateSchema } from "./schema-utils.js";
 
 export interface NodeRunnerResult {
   output: NodeOutput;
   execution: NodeExecution;
   feedback?: NodeFeedback;
+  data?: Record<string, unknown>;
+  diagnostics?: {
+    usedFallbacks?: string[];
+    warnings?: string[];
+    constraintResults?: Record<string, boolean>;
+    signals?: Record<string, unknown>;
+  };
 }
 
 function createId(prefix: string): string {
@@ -154,7 +161,7 @@ export async function callLLM(
     response_format: "json";
     schema: JSONSchema;
     input: Record<string, unknown>;
-    context: ExecutionContext;
+    context: RunContext;
     model?: string;
   }
 ): Promise<LLMOutput> {
@@ -211,7 +218,7 @@ export const __test__ = {
 export async function runLLMNode(
   node: LLMNode | EvaluatorNode,
   input: Record<string, unknown>,
-  context: ExecutionContext
+  context: RunContext
 ): Promise<LLMOutput> {
   const prompt = renderTemplate(node.promptTemplate, input);
   let activePrompt = prompt;
@@ -256,7 +263,7 @@ ${schemaToExample(node.output.schema)}`;
 export async function runEvaluatorNode(
   node: EvaluatorNode,
   input: Record<string, unknown>,
-  context: ExecutionContext
+  context: RunContext
 ): Promise<EvaluationResult> {
   const llmOutput = await runLLMNode(node, input, context);
   const result = llmOutput.parsed as EvaluationResult;
@@ -279,7 +286,7 @@ function buildFeedback(nodeId: string, result: EvaluationResult, now: string): N
     id: createId("feedback"),
     nodeExecutionId: "",
     sourceNodeId: nodeId,
-    targetNodeId: "",
+    targetNodeId: result.shouldRetry ? result.retryTargetNodeId ?? "" : "",
     score: result.score,
     shouldRetry: result.shouldRetry,
     summary: result.issues.join("; ") || (result.passed ? "Output passed evaluator review." : "Evaluator reported issues."),
@@ -292,7 +299,7 @@ export async function runNode(
   node: AgentNode,
   input: Record<string, unknown>,
   retryCount: number,
-  context: ExecutionContext
+  context: RunContext
 ): Promise<NodeRunnerResult> {
   const startedAt = Date.now();
   validateSchema(input, node.input?.schema);
@@ -347,6 +354,9 @@ export async function runNode(
 
   validateSchema(result, node.output.schema);
   const output = normalizeOutput(result);
+  const dataPatch = {
+    [node.id]: output.data
+  };
   const completedAt = Date.now();
   const execution: NodeExecution = {
     id: createId("nodeexec"),
@@ -369,5 +379,5 @@ export async function runNode(
     feedback.nodeExecutionId = execution.id;
   }
 
-  return { output, execution, feedback };
+  return { output, execution, feedback, data: dataPatch };
 }

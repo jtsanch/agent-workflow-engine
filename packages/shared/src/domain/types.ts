@@ -10,6 +10,7 @@ export interface JsonObject {
 
 export type JobStatus = "active" | "paused" | "disabled";
 export type JobRunStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+export type NodeStatus = "pending" | "running" | "completed" | "failed";
 export type NodeExecutionStatus =
     | "pending"
     | "running"
@@ -66,11 +67,6 @@ export interface JSONSchema<T = unknown> {
   definitions?: Record<string, JSONSchema>;
 }
 
-export interface SchemaRef {
-  id: string;
-  version: string;
-}
-
 export interface RetryPolicy {
   maxRetries: number;
   strategy: "regenerate" | "rerun" | "feedback_adjust";
@@ -83,6 +79,10 @@ export interface CachePolicy {
   ttlSeconds?: number;
 }
 
+export interface ExecutionPlan {
+  prompt: string;
+  toolHints: string[];
+}
 export interface ExecutionPolicy {
   timeoutMs?: number;
   retryPolicy?: RetryPolicy;
@@ -109,6 +109,28 @@ export interface NodeOutput<TOutput = unknown> {
   artifacts: unknown[];
 }
 
+export interface NodeRuntime {
+  status: NodeStatus;
+  retryCount: number;
+  lastError?: string;
+}
+
+export interface NodeOutputEntry {
+  attempt: number;
+  data: unknown;
+  artifacts?: unknown[];
+  success: boolean;
+  timestamp: number;
+  error?: string;
+}
+
+export interface NodeInstance {
+  nodeInstanceId: string;
+  nodeId: string;
+  index: number;
+  input: Record<string, unknown>;
+}
+
 export interface OutputContract<TOutput = JsonObject> {
   schema: JSONSchema<TOutput>;
   outputKind?: "structured" | "text" | "decision" | "critique";
@@ -121,6 +143,7 @@ export interface BaseNode<TInput = JsonObject, TOutput = JsonObject> {
   name: string;
   description?: string;
   deterministic?: boolean;
+  writes?: string[];
   input?: {
     schema?: JSONSchema<TInput>;
     bindings?: InputBinding[];
@@ -180,6 +203,7 @@ export interface EvaluationResult {
   issues: string[];
   summary: string;
   shouldRetry: boolean;
+  retryTargetNodeId?: string;
   signal?: EvaluationSignal;
 }
 
@@ -224,8 +248,6 @@ export interface AgentDAG {
   description?: string;
   nodes: AgentNode[];
   edges: AgentEdge[];
-  entryNodeIds: string[];
-  exitNodeIds: string[];
 }
 
 export interface AlertPreference {

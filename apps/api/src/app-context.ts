@@ -102,7 +102,6 @@ export function createAppContext(config: AppConfig): AppContext {
   const runsService = new RunsService(
     jobRepository,
     jobRunRepository,
-    jobRunStepRepository,
     toolInvocationRepository,
     nodeExecutionRepository,
     nodeFeedbackRepository,

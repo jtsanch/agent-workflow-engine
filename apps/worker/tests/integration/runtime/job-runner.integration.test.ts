@@ -5,9 +5,9 @@ import { runJob } from "../../../src/runtime/job-runner.js";
 describe("runJob integration", () => {
   it("executes a DAG-backed job and returns execution telemetry", async () => {
     const job: Job = {
-      id: "job_weekly_grocery",
+      id: "job_daily_grocery",
       userId: "user_test",
-      name: "Weekly Grocery",
+      name: "Daily Grocery",
       dagId: "dag_grocery_planner",
       agentDefinitionKey: "grocery-planner",
       status: "active",
@@ -26,22 +26,17 @@ describe("runJob integration", () => {
     const execution = await runJob(job);
 
     expect(execution.finalOutput).toMatchObject({
-      plan: {
-        meals: expect.any(Array),
-        groceryList: expect.any(Array),
-        totalEstimatedCost: expect.any(Number)
-      }
+      meals: expect.any(Array),
+      groceryList: expect.any(Array),
+      totalCost: expect.any(Number)
     });
     expect(execution.nodeExecutions.length).toBeGreaterThan(0);
-    expect(execution.nodeFeedback).toEqual([]);
-    expect(execution.toolInvocations.length).toBeGreaterThan(0);
-    expect(execution.toolInvocations[0]).toMatchObject({
-      nodeExecutionId: expect.any(String),
-      toolName: expect.any(String),
-      request: expect.any(Object),
-      status: "succeeded",
-      createdAt: expect.any(String)
+    expect(execution.nodeFeedback).toHaveLength(1);
+    expect(execution.nodeFeedback[0]).toMatchObject({
+      sourceNodeId: "validatePlan",
+      shouldRetry: false
     });
+    expect(execution.toolInvocations).toEqual([]);
     expect(execution.memoryWrites).toEqual([]);
   });
 

@@ -80,7 +80,7 @@ describe("API integration", () => {
     expect(runsResponse.statusCode).toBe(200);
     expect(runsResponse.json().items).toHaveLength(1);
     expect(runsResponse.json().items[0].nodeExecutions.length).toBeGreaterThan(0);
-    expect(runsResponse.json().items[0].toolInvocations.length).toBeGreaterThan(0);
+    expect(runsResponse.json().items[0].toolInvocations).toEqual([]);
   });
 
   it("exposes store-aware search through the API", async () => {
@@ -92,7 +92,7 @@ describe("API integration", () => {
       query: {
         zipcode: "94107",
         stores: "Trader Joe's,Costco",
-        category: "weekly grocery deals"
+        category: "daily grocery deals"
       }
     });
 

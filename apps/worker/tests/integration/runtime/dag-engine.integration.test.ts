@@ -1,25 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { weeklyGroceryPlanner } from "@personal-agent-os/agent-sdk";
+import { dailyGroceryPlanner } from "../../../src/agents/index.js";
 import { executeDAG } from "../../../src/runtime/dag-engine.js";
-import type { ExecutionContext } from "@personal-agent-os/agent-sdk";
+import type { RunContext } from "@personal-agent-os/agent-sdk";
 
-const context: ExecutionContext = {
+const context: RunContext = {
   registry: {
-    execute: async (toolName) => {
-      if (toolName === "web_search.search") {
-        return {
-          results: [
-            {
-              title: "Rice price",
-              url: "https://example.com/rice",
-              snippet: "$2.99 per bag"
-            }
-          ]
-        };
-      }
-
-      return {};
-    }
+    execute: async () => ({})
   },
   now: () => "2026-04-10T00:00:00.000Z",
   logger: {
@@ -30,7 +16,7 @@ const context: ExecutionContext = {
 describe("executeDAG", () => {
   it("executes the grocery DAG through its final plan node", async () => {
     const result = await executeDAG(
-      weeklyGroceryPlanner.dag,
+      dailyGroceryPlanner.dag,
       {
         preferences: {
           days: 7,
@@ -41,67 +27,184 @@ describe("executeDAG", () => {
           pantry: ["rice", "olive oil"]
         }
       },
-      "run_weekly",
+      "run_daily",
       context
     );
 
     expect(result.finalOutput).toMatchObject({
-      plan: {
-        meals: expect.any(Array),
-        groceryList: expect.any(Array),
-        totalEstimatedCost: expect.any(Number)
-      }
+      meals: expect.any(Array),
+      groceryList: expect.any(Array),
+      totalCost: expect.any(Number)
     });
+    expect((result.finalOutput as { meals: unknown[] }).meals).toHaveLength(4);
     expect(result.nodeExecutions.length).toBeGreaterThan(0);
     expect(result.nodeExecutions.map((execution) => execution.nodeId)).toEqual([
       "generateMeals",
-      "extractIngredients",
-      "priceLookup",
-      "optimizePlan",
+      "estimateNutrition",
+      "normalizeMeals",
+      "aggregateIngredients",
+      "convertToPurchasableUnits",
+      "calculateCosts",
       "validatePlan",
       "finalizePlan"
     ]);
-    expect(result.toolInvocations).toHaveLength(1);
-    expect(result.toolInvocations[0]).toMatchObject({
-      nodeExecutionId: expect.any(String),
-      toolName: "web_search.search",
-      request: expect.any(Object),
-      response: expect.any(Object),
-      status: "succeeded",
-      createdAt: expect.any(String)
+    expect(result.toolInvocations).toEqual([]);
+    expect(result.nodeFeedback).toHaveLength(1);
+    expect(result.nodeFeedback[0]).toMatchObject({
+      sourceNodeId: "validatePlan",
+      shouldRetry: false
     });
-    expect(result.nodeFeedback).toEqual([]);
     expect(result.memoryWrites).toEqual([]);
   });
 
-  it("passes budget feedback through validation output when a plan is over budget", async () => {
+  it("produces meals with nutrition and grocery item costs in the final JSON output", async () => {
     const result = await executeDAG(
-      weeklyGroceryPlanner.dag,
+      dailyGroceryPlanner.dag,
       {
         preferences: {
-          days: 7,
+          days: 1,
           servings: 2,
-          budgetUsd: 0
+          budgetUsd: 20,
+          dailyTargets: {
+            calories: 2000,
+            protein: 150
+          }
         }
       },
-      "run_weekly",
+      "run_daily",
       context
     );
 
     expect(result.nodeExecutions.length).toBeGreaterThan(0);
-    expect(result.toolInvocations).toHaveLength(1);
-    expect(result.nodeFeedback).toEqual([]);
+    expect(result.toolInvocations).toEqual([]);
     expect(result.memoryWrites).toEqual([]);
-    const validatePlanExecution = result.nodeExecutions.find((execution) => execution.nodeId === "validatePlan");
+    expect(result.finalOutput).toEqual(expect.objectContaining({
+      meals: expect.arrayContaining([
+        expect.objectContaining({
+          mealType: expect.any(String),
+          name: expect.any(String),
+          ingredients: expect.any(Array),
+          nutrition: {
+            calories: expect.any(Number),
+            protein: expect.any(Number),
+            carbs: expect.any(Number),
+            fat: expect.any(Number)
+          }
+        })
+      ]),
+      groceryList: expect.arrayContaining([
+        expect.objectContaining({
+          item: expect.any(String),
+          quantity: expect.any(Number),
+          unit: expect.any(String),
+          estimatedCost: expect.any(Number)
+        })
+      ]),
+      totalCost: expect.any(Number)
+    }));
 
+    const validatePlanExecution = result.nodeExecutions.find((execution) => execution.nodeId === "validatePlan");
     expect(validatePlanExecution?.output?.data).toMatchObject({
-      valid: false,
-      shouldRetry: true,
-      issues: [expect.stringContaining("over budget")],
-      feedback: {
-        currentCost: expect.any(Number),
-        overBudgetBy: expect.any(Number)
+      score: expect.any(Number),
+      passed: expect.any(Boolean),
+      issues: expect.any(Array),
+      summary: expect.any(String),
+      shouldRetry: false
+    });
+  });
+
+  it("allows an empty grocery list only when pantry covers the full generated plan", async () => {
+    const result = await executeDAG(
+      dailyGroceryPlanner.dag,
+      {
+        preferences: {
+          days: 1,
+          servings: 2,
+          pantry: [
+            "greek yogurt",
+            "oats",
+            "berries",
+            "bread",
+            "turkey slices",
+            "lettuce",
+            "tomato",
+            "chicken breast",
+            "rice",
+            "broccoli",
+            "apple",
+            "almonds"
+          ]
+        }
+      },
+      "run_pantry_only",
+      context
+    );
+
+    expect(result.finalOutput).toMatchObject({
+      meals: expect.any(Array),
+      groceryList: [],
+      totalCost: 0
+    });
+
+    const calculateCostsExecution = result.nodeExecutions.find((execution) => execution.nodeId === "calculateCosts");
+    expect(calculateCostsExecution?.output?.data).toMatchObject({
+      pantryCoverage: {
+        totalIngredientCount: expect.any(Number),
+        coveredIngredientCount: expect.any(Number),
+        uncoveredIngredientCount: 0,
+        fullyCovered: true
       }
     });
+
+    const validatePlanExecution = result.nodeExecutions.find((execution) => execution.nodeId === "validatePlan");
+    expect(validatePlanExecution?.input).toMatchObject({
+      pantryCoverage: {
+        fullyCovered: true
+      }
+    });
+  });
+
+  it("accepts desired meal preferences in the DAG input", async () => {
+    const result = await executeDAG(
+      dailyGroceryPlanner.dag,
+      {
+        preferences: {
+          days: 1,
+          servings: 1,
+          desiredMeals: {
+            breakfast: "oatmeal with honey and almonds"
+          }
+        }
+      },
+      "run_desired_meals",
+      context
+    );
+
+    expect(result.finalOutput).toMatchObject({
+      meals: expect.any(Array),
+      groceryList: expect.any(Array),
+      totalCost: expect.any(Number)
+    });
+    expect((result.finalOutput as { meals: unknown[] }).meals).toHaveLength(4);
+  });
+
+  it("accepts daily meat frequency preferences in the DAG input", async () => {
+    const result = await executeDAG(
+      dailyGroceryPlanner.dag,
+      {
+        preferences: {
+          includeMeat: true,
+        }
+      },
+      "run_daily_meat_pref",
+      context
+    );
+
+    expect(result.finalOutput).toMatchObject({
+      meals: expect.any(Array),
+      groceryList: expect.any(Array),
+      totalCost: expect.any(Number)
+    });
+    expect((result.finalOutput as { meals: unknown[] }).meals).toHaveLength(4);
   });
 });

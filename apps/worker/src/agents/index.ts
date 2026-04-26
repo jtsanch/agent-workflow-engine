@@ -1,1 +1,1 @@
-export { weeklyGroceryPlanner, seedAgentDefinitions } from "@personal-agent-os/agent-sdk";
+export { dailyGroceryPlanner, seedAgentDefinitions } from "@personal-agent-os/agent-sdk";

@@ -1,7 +1,7 @@
 import type {
-  ExecutionContext,
   InputOf,
   OutputOf,
+  RunContext,
   ToolDefinition,
   ToolMap,
   ToolRegistry as ToolRegistryContract
@@ -31,7 +31,7 @@ implements ToolRegistryContract {
   async execute(
     toolName: string,
     input: Record<string, unknown>,
-    context: ExecutionContext
+    context: RunContext
   ): Promise<unknown> {
     const tool = this.get(toolName as keyof TTools);
     return tool.run(input as InputOf<typeof tool>, context) as Promise<OutputOf<typeof tool>>;

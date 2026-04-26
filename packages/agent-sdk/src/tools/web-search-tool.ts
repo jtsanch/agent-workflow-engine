@@ -1,4 +1,4 @@
-import type {ExecutionContext, WebSearchInput, WebSearchOutput} from "../types.js";
+import type {RunContext, WebSearchInput, WebSearchOutput} from "../types.js";
 import { BaseTool } from "./base-tool.js";
 
 interface DuckDuckGoResponse {
@@ -29,7 +29,7 @@ export class WebSearchTool extends BaseTool<"web_search.search", WebSearchInput,
   readonly name = "web_search.search";
   readonly description = "Searches the web for public information via DuckDuckGo instant answers.";
 
-  protected async execute(input: WebSearchInput, context: ExecutionContext): Promise<WebSearchOutput> {
+  protected async execute(input: WebSearchInput, context: RunContext): Promise<WebSearchOutput> {
     const query = this.buildQuery(input);
     if (!query) {
       return { results: [], metadata: { total: 0, provider: "none", latencyMs: 0 } };
@@ -39,7 +39,7 @@ export class WebSearchTool extends BaseTool<"web_search.search", WebSearchInput,
       return this.stub({
         results: [
           {
-            title: "Weekly produce deals",
+            title: "Daily produce deals",
             url: "https://example.com/deals",
             snippet: `Mock search result for ${query}`
           },

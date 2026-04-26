@@ -41,7 +41,7 @@ function formatTrigger(triggerSource: RunListItem["triggerSource"]): string {
 function formatJobType(agent?: AgentDefinition, job?: Job): string {
   const source = agent?.name ?? job?.name ?? job?.agentDefinitionKey ?? "Workflow";
   const formatted = source
-    .replace(/weekly/gi, "")
+    .replace(/daily/gi, "")
     .replace(/planner/gi, "")
     .replace(/agent/gi, "")
     .replace(/-/g, " ")

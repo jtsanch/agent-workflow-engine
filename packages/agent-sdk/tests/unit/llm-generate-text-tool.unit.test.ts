@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createLlmBudget } from "../../src/tools/llm-budget.js";
 import { LlmGenerateTextTool } from "../../src/tools/llm-generate-text-tool.js";
 import { resetOpenAiClientForTests } from "../../src/tools/llm-client.js";
-import type { ExecutionContext } from "../../src/types.js";
+import type { RunContext } from "../../src/types.js";
 
 const createCompletion = vi.fn();
 
@@ -18,7 +18,7 @@ vi.mock("openai", () => {
   };
 });
 
-function createContext(): ExecutionContext {
+function createContext(): RunContext {
   return {
     registry: {
       execute: vi.fn()
@@ -151,7 +151,7 @@ describe("LlmGenerateTextTool", () => {
     expect(createCompletion).toHaveBeenCalledWith(
       expect.objectContaining({
         temperature: 0.2,
-        max_completion_tokens: 800
+        max_completion_tokens: 2000
       })
     );
   });

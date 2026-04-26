@@ -7,7 +7,6 @@ import {
   InMemoryJobMemoryRepository,
   InMemoryJobRepository,
   InMemoryJobRunRepository,
-  InMemoryJobRunStepRepository,
   InMemoryJobScheduleRepository,
   InMemoryNodeExecutionRepository,
   InMemoryNodeFeedbackRepository,
@@ -62,7 +61,6 @@ describe("RunsService", () => {
     const runsService = new RunsService(
       jobRepository,
       new InMemoryJobRunRepository(database),
-      new InMemoryJobRunStepRepository(database),
       new InMemoryToolInvocationRepository(database),
       new InMemoryNodeExecutionRepository(database),
       new InMemoryNodeFeedbackRepository(database),
@@ -79,7 +77,7 @@ describe("RunsService", () => {
     expect(completedRun.output?.data).toBeDefined();
     expect(runs).toHaveLength(2);
     expect(runs.some((run) => run.nodeExecutions.length > 0)).toBe(true);
-    expect(runs.some((run) => run.toolInvocations.length > 0)).toBe(true);
+    expect(runs.every((run) => run.toolInvocations.length === 0)).toBe(true);
   });
 
   it("throws when enqueueing an unknown job", async () => {
@@ -87,7 +85,6 @@ describe("RunsService", () => {
     const runsService = new RunsService(
       new InMemoryJobRepository(database),
       new InMemoryJobRunRepository(database),
-      new InMemoryJobRunStepRepository(database),
       new InMemoryToolInvocationRepository(database),
       new InMemoryNodeExecutionRepository(database),
       new InMemoryNodeFeedbackRepository(database),

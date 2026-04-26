@@ -1,9 +1,9 @@
-import type { DataRef, InputBinding, NodeOutput } from "@personal-agent-os/shared";
-import type { ExecutionContext } from "@personal-agent-os/agent-sdk";
+import type { DataRef, InputBinding, NodeOutput, NodeOutputEntry } from "@personal-agent-os/shared";
+import {ExecutionState} from './execution-state.js';
 
 export function resolveInputBindings(
     bindings: InputBinding[] | undefined,
-    context: ExecutionContext
+    state: ExecutionState
 ): Record<string, unknown> {
     const result: Record<string, unknown> = {};
     if (bindings === undefined) {
@@ -11,7 +11,7 @@ export function resolveInputBindings(
     }
     for (const binding of bindings) {
         const { key, ref, optional } = binding;
-        const val = resolveDataRef(ref, !!optional, context);
+        const val = resolveDataRef(ref, !!optional, state);
         if (val !== undefined) {
             result[key] = val;
         }
@@ -19,20 +19,23 @@ export function resolveInputBindings(
     return result;
 }
 
-export function resolveDataRef(ref: DataRef, optional: boolean, context: ExecutionContext): unknown {
+export function resolveDataRef(ref: DataRef, optional: boolean, state: ExecutionState): unknown {
     switch (ref.source) {
         case "job_input":
-            return getByPath(context.jobInput, ref.path);
+            return getByPath(state.input, ref.path);
 
         case "node_output": {
-            const nodeOutput = context.nodeOutputs?.[ref.nodeId] as NodeOutput | undefined;
-            if (!nodeOutput) {
+            const nodeOutputs = state.getNodeOutputs(ref.nodeId);
+            if (!nodeOutputs || nodeOutputs.length === 0) {
                 if (!optional) {
                     throw new Error(`Missing dependency: ${ref.nodeId}`);
                 }
                 return undefined;
             }
-            return getByPath(nodeOutput.data, ref.path);
+            if (nodeOutputs.length > 1) {
+                throw new Error("Fanout is not supported");
+            }
+            return getByPath(nodeOutputs[0].data, ref.path);
         }
 
         case "memory":
@@ -40,9 +43,6 @@ export function resolveDataRef(ref: DataRef, optional: boolean, context: Executi
 
         case "static":
             return ref.value;
-
-        case "context":
-            return getByPath(context, ref.path);
 
         default:
             throw new Error(`Unknown DataRef source`);

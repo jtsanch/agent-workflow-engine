@@ -284,7 +284,7 @@ Current MVP behavior:
 - retry logic clears downstream state and re-runs targeted nodes
 - more advanced replan behavior is left as a TODO
 
-## Sample Workflow: Weekly Grocery Planner
+## Sample Workflow: Daily Grocery Planner
 
 The sample DAG includes:
 

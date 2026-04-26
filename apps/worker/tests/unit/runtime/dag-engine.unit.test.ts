@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentDAG, AgentNode, NodeFeedback, NodeExecution } from "@personal-agent-os/shared";
-import type { ExecutionContext } from "@personal-agent-os/agent-sdk";
+import type {RunContext} from '@personal-agent-os/agent-sdk';
 import { ExecutionState } from "../../../src/runtime/execution-state.js";
 
 vi.mock("../../../src/runtime/node-runner.js", () => ({
@@ -12,7 +12,7 @@ import { runNode } from "../../../src/runtime/node-runner.js";
 
 const runNodeMock = vi.mocked(runNode);
 
-function createContext(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
+function createContext(overrides: Partial<RunContext> = {}): RunContext {
   return {
     registry: {
       execute: vi.fn()
@@ -21,8 +21,6 @@ function createContext(overrides: Partial<ExecutionContext> = {}): ExecutionCont
     logger: {
       info: () => undefined
     },
-    jobInput: {},
-    nodeOutputs: {},
     ...overrides
   };
 }
@@ -97,6 +95,16 @@ describe("dag-engine helpers", () => {
     vi.clearAllMocks();
   });
 
+  it("initializes workingState correctly", () => {
+    const state = __test__.createInitialWorkingState();
+
+    expect(state.data).toEqual({});
+    expect(state.diagnostics.usedFallbacks).toEqual([]);
+    expect(Object.isFrozen(state)).toBe(true);
+    expect(Object.isFrozen(state.data)).toBe(true);
+    expect(Object.isFrozen(state.diagnostics)).toBe(true);
+  });
+
   it("creates a failed node execution record from an error", () => {
     const result = __test__.createFailureExecution("run_123", createToolNode(), { query: "coffee" }, 2, new Error("boom"));
 
@@ -132,7 +140,7 @@ describe("dag-engine helpers", () => {
     });
   });
 
-  it("returns runnable entry nodes, nullish data edges, and retry-pending nodes in sorted order", () => {
+  it("returns pending nodes whose incoming data dependencies are completed in sorted order", () => {
     const dag: AgentDAG = {
       id: "dag_runnable",
       version: "1.0.0",
@@ -144,9 +152,7 @@ describe("dag-engine helpers", () => {
       ],
       edges: [
         { id: "edge_1", from: "a_entry", to: "c_child", type: "data" }
-      ],
-      entryNodeIds: ["a_entry"],
-      exitNodeIds: ["c_child"]
+      ]
     };
 
     const state = new ExecutionState({});
@@ -168,9 +174,7 @@ describe("dag-engine helpers", () => {
         createTransformNode("running"),
         createTransformNode("ready")
       ],
-      edges: [],
-      entryNodeIds: ["done", "running", "ready"],
-      exitNodeIds: ["ready"]
+      edges: []
     };
 
     const state = new ExecutionState({});
@@ -180,10 +184,10 @@ describe("dag-engine helpers", () => {
     expect(__test__.getRunnableNodes(dag, state).map((node) => node.id)).toEqual(["ready"]);
   });
 
-  it("stores outputs, initializes nodeOutputs when missing, and records feedback", () => {
+  it("stores outputs on state and records feedback", () => {
     const node = createEvaluatorNode();
     const state = new ExecutionState({});
-    const context = createContext({ nodeOutputs: undefined });
+    const context = createContext();
     const nodeExecutions: NodeExecution[] = [];
     const nodeFeedback: NodeFeedback[] = [];
     const feedback: NodeFeedback = {
@@ -196,6 +200,16 @@ describe("dag-engine helpers", () => {
       summary: "Looks good",
       createdAt: "2026-04-10T00:00:00.000Z"
     };
+    state.completeExecution("review", {
+      data: {
+        score: 0.9,
+        passed: true,
+        issues: [],
+        summary: "Looks good",
+        shouldRetry: false
+      },
+      artifacts: []
+    });
 
     __test__.collectOutputs(
       [
@@ -203,6 +217,12 @@ describe("dag-engine helpers", () => {
           node,
           input: {},
           result: {
+            data: {
+              normalized: true
+            },
+            diagnostics: {
+              usedFallbacks: ["fallback_from_node"]
+            },
             output: {
               data: {
                 score: 0.9,
@@ -247,7 +267,10 @@ describe("dag-engine helpers", () => {
 
     expect(nodeExecutions).toHaveLength(1);
     expect(nodeFeedback).toEqual([feedback]);
-    expect(context.nodeOutputs?.review).toEqual({
+    const reviewInstanceId = state.getNodeInstanceId("review");
+    expect(state.nodeOutputs[reviewInstanceId]).toHaveLength(1);
+    expect(state.nodeOutputs[reviewInstanceId]?.[0]).toMatchObject({
+      attempt: 0,
       data: {
         score: 0.9,
         passed: true,
@@ -255,7 +278,8 @@ describe("dag-engine helpers", () => {
         summary: "Looks good",
         shouldRetry: false
       },
-      artifacts: []
+      artifacts: [],
+      success: true
     });
   });
 
@@ -265,9 +289,7 @@ describe("dag-engine helpers", () => {
       version: "1.0.0",
       name: "Skip Retry DAG",
       nodes: [createToolNode("lookup")],
-      edges: [],
-      entryNodeIds: ["lookup"],
-      exitNodeIds: ["lookup"]
+      edges: []
     };
 
     const state = new ExecutionState({});
@@ -300,9 +322,7 @@ describe("dag-engine helpers", () => {
       version: "1.0.0",
       name: "No Retry DAG",
       nodes: [evaluator, createTransformNode("draft")],
-      edges: [{ id: "feedback_1", from: "review", to: "draft", type: "feedback" }],
-      entryNodeIds: ["draft"],
-      exitNodeIds: ["draft"]
+      edges: [{ id: "feedback_1", from: "review", to: "draft", type: "feedback" }]
     };
     const feedback: NodeFeedback = {
       id: "feedback_evt_1",
@@ -345,22 +365,20 @@ describe("dag-engine helpers", () => {
     expect(feedback.targetNodeId).toBe("");
   });
 
-  it("schedules retries for feedback targets and records the first target on feedback", () => {
+  it("schedules retries for the evaluator retry target and clears state node outputs", () => {
     const dag: AgentDAG = {
       id: "dag_1",
       version: "1.0.0",
       name: "Retry DAG",
       nodes: [
-        createEvaluatorNode(),
         createTransformNode("draft"),
+        createEvaluatorNode(),
         createTransformNode("publish")
       ],
       edges: [
-        { id: "feedback_1", from: "review", to: "draft", type: "feedback" },
-        { id: "data_1", from: "draft", to: "publish", type: "data" }
-      ],
-      entryNodeIds: ["draft"],
-      exitNodeIds: ["publish"]
+        { id: "data_1", from: "draft", to: "review", type: "data" },
+        { id: "data_2", from: "review", to: "publish", type: "data" }
+      ]
     };
 
     const feedback: NodeFeedback = {
@@ -375,14 +393,16 @@ describe("dag-engine helpers", () => {
     };
 
     const state = new ExecutionState({});
+    const context = createContext();
     state.store("draft", { data: { text: "old draft" }, artifacts: [] });
+    state.store("review", { data: { score: 0.2 }, artifacts: [] });
     state.store("publish", { data: { ok: true }, artifacts: [] });
 
     __test__.scheduleRetries(
       dag,
       [
         {
-          node: dag.nodes[0],
+          node: dag.nodes[1],
           input: {},
           result: {
             output: {
@@ -391,7 +411,8 @@ describe("dag-engine helpers", () => {
                 passed: false,
                 issues: ["Needs another pass"],
                 summary: "Needs another pass",
-                shouldRetry: true
+                shouldRetry: true,
+                retryTargetNodeId: "draft"
               },
               artifacts: []
             },
@@ -405,21 +426,62 @@ describe("dag-engine helpers", () => {
 
     expect(state.isRetryPending("draft")).toBe(true);
     expect(state.getRetryCount("draft")).toBe(1);
-    expect(state.getNodeOutput("draft")).toBeUndefined();
-    expect(state.getNodeOutput("publish")).toBeUndefined();
+    expect(state.getNodeOutputs("draft")).toBeUndefined();
+    expect(state.getNodeOutputs("review")).toBeUndefined();
+    expect(state.getNodeOutputs("publish")).toBeUndefined();
     expect(feedback.targetNodeId).toBe("draft");
+    expect(state.nodeOutputs.draft).toBeUndefined();
+    expect(state.nodeOutputs.review).toBeUndefined();
+    expect(state.nodeOutputs.publish).toBeUndefined();
   });
 
-  it("leaves targetNodeId unchanged when retrying without feedback edges", () => {
+  it("throws when runnable nodes declare conflicting writes", () => {
+    expect(() =>
+      __test__.assertNoWriteConflicts([
+        {
+          ...createTransformNode("draft_a"),
+          writes: ["workingState.data.plan"]
+        },
+        {
+          ...createTransformNode("draft_b"),
+          writes: ["workingState.data.plan"]
+        }
+      ])
+    ).toThrow('Write conflict on field "workingState.data.plan" between nodes: draft_a, draft_b');
+  });
+
+  it("stops batch execution before runNode when conflicting writes are detected", async () => {
+    await expect(
+      __test__.executeNodesBatch(
+        [
+          {
+            ...createTransformNode("draft_a"),
+            writes: ["workingState.data.plan"]
+          },
+          {
+            ...createTransformNode("draft_b"),
+            writes: ["workingState.data.plan"]
+          }
+        ],
+        "run_conflict",
+        new ExecutionState({}),
+        createContext(),
+        [],
+        []
+      )
+    ).rejects.toThrow('Write conflict on field "workingState.data.plan" between nodes: draft_a, draft_b');
+
+    expect(runNodeMock).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the evaluator as the retry target when none is provided", () => {
     const evaluator = createEvaluatorNode();
     const dag: AgentDAG = {
       id: "dag_empty_targets",
       version: "1.0.0",
       name: "Empty Targets DAG",
       nodes: [evaluator],
-      edges: [],
-      entryNodeIds: ["review"],
-      exitNodeIds: ["review"]
+      edges: []
     };
     const feedback: NodeFeedback = {
       id: "feedback_evt_1",
@@ -457,7 +519,7 @@ describe("dag-engine helpers", () => {
       new ExecutionState({})
     );
 
-    expect(feedback.targetNodeId).toBe("");
+    expect(feedback.targetNodeId).toBe("review");
   });
 
   it("wraps thrown node-runner errors in DAGExecutionError during executeNodesBatch", async () => {
@@ -511,9 +573,7 @@ describe("dag-engine helpers", () => {
       version: "1.0.0",
       name: "Tools DAG",
       nodes: [createToolNode("lookup")],
-      edges: [],
-      entryNodeIds: ["lookup"],
-      exitNodeIds: ["lookup"]
+      edges: []
     };
     const nodeExecutions: NodeExecution[] = [
       {
@@ -640,9 +700,7 @@ describe("dag-engine helpers", () => {
           version: "1.0.0",
           name: "Single Exit",
           nodes: [createTransformNode("a")],
-          edges: [],
-          entryNodeIds: ["a"],
-          exitNodeIds: ["a"]
+          edges: []
         },
         state
       )
@@ -655,9 +713,7 @@ describe("dag-engine helpers", () => {
           version: "1.0.0",
           name: "Multi Exit",
           nodes: [createTransformNode("a"), createTransformNode("b")],
-          edges: [],
-          entryNodeIds: ["a", "b"],
-          exitNodeIds: ["a", "b"]
+          edges: []
         },
         state
       )
@@ -673,22 +729,47 @@ describe("executeDAG", () => {
     vi.clearAllMocks();
   });
 
-  it("breaks cleanly when the DAG has no runnable nodes", async () => {
+  it("executes pending nodes with no incoming data edges", async () => {
     const dag: AgentDAG = {
       id: "dag_blocked",
       version: "1.0.0",
       name: "Blocked DAG",
       nodes: [createTransformNode("blocked")],
-      edges: [],
-      entryNodeIds: [],
-      exitNodeIds: ["blocked"]
+      edges: []
     };
+    runNodeMock.mockResolvedValueOnce({
+      output: {
+        data: { ok: true },
+        artifacts: []
+      },
+      execution: {
+        id: "nodeexec_blocked",
+        jobRunId: "run_1",
+        nodeId: "blocked",
+        nodeVersion: "1.0.0",
+        nodeType: "transform",
+        status: "succeeded",
+        resolvedInput: {},
+        output: {
+          data: { ok: true },
+          artifacts: []
+        },
+        retryCount: 0,
+        startedAt: "2026-04-10T00:00:00.000Z",
+        completedAt: "2026-04-10T00:00:01.000Z"
+      }
+    });
 
     const result = await executeDAG(dag, {}, "run_1", createContext());
 
     expect(result).toEqual({
-      finalOutput: undefined,
-      nodeExecutions: [],
+      finalOutput: { ok: true },
+      nodeExecutions: [
+        expect.objectContaining({
+          id: "nodeexec_blocked",
+          nodeId: "blocked"
+        })
+      ],
       toolInvocations: [],
       nodeFeedback: [],
       memoryWrites: []
@@ -701,9 +782,7 @@ describe("executeDAG", () => {
       version: "1.0.0",
       name: "Error DAG",
       nodes: [createToolNode("lookup")],
-      edges: [],
-      entryNodeIds: ["lookup"],
-      exitNodeIds: ["lookup"]
+      edges: []
     };
 
     runNodeMock.mockRejectedValueOnce(new Error("node failed"));

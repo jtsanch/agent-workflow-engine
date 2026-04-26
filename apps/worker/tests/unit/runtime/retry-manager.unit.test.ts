@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AgentDAG, AgentNode, EvaluatorNode, NodeFeedback } from "@personal-agent-os/shared";
 import { ExecutionState } from "../../../src/runtime/execution-state.js";
-import { __test__, applyFeedbackRetry, shouldRetry } from "../../../src/runtime/retry-manager.js";
+import { __test__, applyEvaluatorRetry, shouldRetry } from "../../../src/runtime/retry-manager.js";
 
 const retryingNode: EvaluatorNode = {
   id: "reviewer",
@@ -47,14 +47,53 @@ const retryingNode: EvaluatorNode = {
 
 describe("retry-manager", () => {
   it("retries only when the node allows it and the output requests it", () => {
-    const state = new ExecutionState({});
+    expect(shouldRetry(retryingNode, { data: { shouldRetry: true } })).toBe(true);
+    expect(shouldRetry(retryingNode, { data: { shouldRetry: false } })).toBe(false);
+  });
 
-    expect(shouldRetry(retryingNode, { data: { shouldRetry: true } }, state)).toBe(true);
+  it("does not retry when the evaluator has no retry policy configured", () => {
+    const evaluatorWithoutRetryPolicy: EvaluatorNode = {
+      ...retryingNode,
+      execution: undefined
+    };
 
-    state.markForRetry(retryingNode.id);
+    expect(shouldRetry(evaluatorWithoutRetryPolicy, { data: { shouldRetry: true } })).toBe(false);
 
-    expect(shouldRetry(retryingNode, { data: { shouldRetry: true } }, state)).toBe(false);
-    expect(shouldRetry(retryingNode, { data: { shouldRetry: false } }, state)).toBe(false);
+    const feedback: NodeFeedback = {
+      id: "feedback_1",
+      nodeExecutionId: "nodeexec_1",
+      sourceNodeId: "reviewer",
+      targetNodeId: "",
+      score: 0.4,
+      shouldRetry: true,
+      summary: "Please refine",
+      createdAt: "2026-04-10T00:00:00.000Z"
+    };
+
+    expect(
+      applyEvaluatorRetry(
+        {
+          id: "dag-no-retry-policy",
+          version: "1.0.0",
+          name: "No Retry Policy DAG",
+          nodes: [evaluatorWithoutRetryPolicy],
+          edges: []
+        },
+        evaluatorWithoutRetryPolicy,
+        {
+          data: {
+            score: 0.4,
+            passed: false,
+            issues: ["Please refine"],
+            summary: "Please refine",
+            shouldRetry: true
+          }
+        },
+        feedback,
+        new ExecutionState({})
+      )
+    ).toEqual([]);
+    expect(feedback.targetNodeId).toBe("");
   });
 
   it("returns false for non-evaluator nodes and non-object outputs", () => {
@@ -72,8 +111,8 @@ describe("retry-manager", () => {
       }
     };
 
-    expect(shouldRetry(toolNode, { data: { shouldRetry: true } }, new ExecutionState({}))).toBe(false);
-    expect(shouldRetry(retryingNode, { data: "plain text" }, new ExecutionState({}))).toBe(false);
+    expect(shouldRetry(toolNode, { data: { shouldRetry: true } })).toBe(false);
+    expect(shouldRetry(retryingNode, { data: "plain text" })).toBe(false);
   });
 
   it("collects downstream ids once even when the graph converges", () => {
@@ -81,8 +120,6 @@ describe("retry-manager", () => {
       id: "dag-downstream",
       version: "1.0.0",
       name: "Downstream DAG",
-      entryNodeIds: ["draft"],
-      exitNodeIds: ["final"],
       nodes: [
         retryingNode,
         { id: "draft", version: "1.0.0", type: "transform", name: "Draft", run: () => ({}), output: { schema: { type: "object", additionalProperties: true } } },
@@ -98,16 +135,14 @@ describe("retry-manager", () => {
       ]
     };
 
-    expect(__test__.collectDownstreamNodeIds(dag, "draft").sort()).toEqual(["final", "review", "summary"]);
+    expect(__test__.getDownstreamNodes("draft", dag).sort()).toEqual(["final", "review", "summary"]);
   });
 
-  it("marks feedback targets for retry and clears their downstream outputs", () => {
+  it("marks the evaluator-provided retry target for retry and clears its downstream outputs", () => {
     const dag: AgentDAG = {
       id: "dag-test",
       version: "1.0.0",
       name: "Retry Test",
-      entryNodeIds: ["draft"],
-      exitNodeIds: ["reviewer"],
       nodes: [
         {
           id: "draft",
@@ -173,8 +208,7 @@ describe("retry-manager", () => {
       ],
       edges: [
         { id: "edge_draft_review", from: "draft", to: "reviewer", type: "data" },
-        { id: "edge_draft_summary", from: "draft", to: "summary", type: "data" },
-        { id: "edge_review_draft", from: "reviewer", to: "draft", type: "feedback" }
+        { id: "edge_draft_summary", from: "draft", to: "summary", type: "data" }
       ]
     };
     const feedback: NodeFeedback = {
@@ -190,30 +224,104 @@ describe("retry-manager", () => {
     const state = new ExecutionState({});
     state.store("draft", { data: { planSummary: "Draft v1" }, artifacts: [] });
     state.store("summary", { data: { draftSummary: "Draft v1" }, artifacts: [] });
+    state.store("reviewer", { data: { score: 0.4 }, artifacts: [] });
 
-    const targets = applyFeedbackRetry(dag, retryingNode, feedback, state);
+    const targets = applyEvaluatorRetry(
+      dag,
+      retryingNode,
+      {
+        data: {
+          score: 0.4,
+          passed: false,
+          issues: ["Please refine"],
+          summary: "Please refine",
+          shouldRetry: true,
+          retryTargetNodeId: "draft"
+        }
+      },
+      feedback,
+      state
+    );
 
-    expect(targets).toEqual(["draft"]);
+    expect(targets).toEqual(["draft", "reviewer", "summary"]);
     expect(state.isRetryPending("draft")).toBe(true);
-    expect(state.getNodeOutput("draft")).toBeUndefined();
-    expect(state.getNodeOutput("summary")).toBeUndefined();
+    expect(state.getNodeOutputs("draft")).toBeUndefined();
+    expect(state.getNodeOutputs("summary")).toBeUndefined();
+    expect(state.getNodeOutputs("reviewer")).toBeUndefined();
+    expect(feedback.targetNodeId).toBe("draft");
   });
 
-  it("returns an empty target list when no feedback edges exist", () => {
+  it("falls back to retrying the evaluator itself when no retry target is provided", () => {
     const dag: AgentDAG = {
       id: "dag-no-feedback",
       version: "1.0.0",
       name: "No Feedback DAG",
-      entryNodeIds: ["reviewer"],
-      exitNodeIds: ["reviewer"],
       nodes: [retryingNode],
       edges: []
     };
 
+    const state = new ExecutionState({});
+    state.store("reviewer", { data: { score: 0.4 }, artifacts: [] });
+
+    const feedback: NodeFeedback = {
+      id: "feedback_1",
+      nodeExecutionId: "nodeexec_1",
+      sourceNodeId: "reviewer",
+      targetNodeId: "",
+      score: 0.4,
+      shouldRetry: true,
+      summary: "Please refine",
+      createdAt: "2026-04-10T00:00:00.000Z"
+    };
+
     expect(
-      applyFeedbackRetry(
+      applyEvaluatorRetry(
         dag,
         retryingNode,
+        {
+          data: {
+            score: 0.4,
+            passed: false,
+            issues: ["Please refine"],
+            summary: "Please refine",
+            shouldRetry: true
+          }
+        },
+        feedback,
+        state
+      )
+    ).toEqual(["reviewer"]);
+    expect(state.isRetryPending("reviewer")).toBe(true);
+    expect(feedback.targetNodeId).toBe("reviewer");
+  });
+
+  it("stops scheduling retries after the target reaches the max attempts", () => {
+    const state = new ExecutionState({});
+    state.markForRetry("draft");
+
+    expect(
+      applyEvaluatorRetry(
+        {
+          id: "dag-max-retries",
+          version: "1.0.0",
+          name: "Retry Limit DAG",
+          nodes: [
+            retryingNode,
+            { id: "draft", version: "1.0.0", type: "transform", name: "Draft", run: () => ({}), output: { schema: { type: "object", additionalProperties: true } } }
+          ],
+          edges: [{ id: "edge_1", from: "draft", to: "reviewer", type: "data" }]
+        },
+        retryingNode,
+        {
+          data: {
+            score: 0.4,
+            passed: false,
+            issues: ["Please refine"],
+            summary: "Please refine",
+            shouldRetry: true,
+            retryTargetNodeId: "draft"
+          }
+        },
         {
           id: "feedback_1",
           nodeExecutionId: "nodeexec_1",
@@ -224,7 +332,7 @@ describe("retry-manager", () => {
           summary: "Please refine",
           createdAt: "2026-04-10T00:00:00.000Z"
         },
-        new ExecutionState({})
+        state
       )
     ).toEqual([]);
   });

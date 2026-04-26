@@ -1,11 +1,10 @@
 import { createLlmBudget } from "@personal-agent-os/agent-sdk";
-import type { ExecutionContext } from "@personal-agent-os/agent-sdk";
+import type { RunContext } from "@personal-agent-os/agent-sdk";
 import type { JobRun, NodeExecution, NodeFeedback, ToolInvocation, UserContext } from "@personal-agent-os/shared";
 import type {
   JobMemoryRepository,
   JobRepository,
   JobRunRepository,
-  JobRunStepRepository,
   NodeExecutionRepository,
   NodeFeedbackRepository,
   ToolInvocationRepository
@@ -27,7 +26,6 @@ export class RunsService {
   constructor(
     private readonly jobRepository: JobRepository,
     private readonly jobRunRepository: JobRunRepository,
-    private readonly jobRunStepRepository: JobRunStepRepository,
     private readonly toolInvocationRepository: ToolInvocationRepository,
     private readonly nodeExecutionRepository: NodeExecutionRepository,
     private readonly nodeFeedbackRepository: NodeFeedbackRepository,
@@ -122,10 +120,8 @@ export class RunsService {
     };
     await this.jobRunRepository.create(run);
 
-    const context: ExecutionContext = {
+    const context: RunContext = {
       registry: createDefaultToolRegistry(),
-      jobInput: job.inputs,
-      nodeOutputs: {},
       now: () => new Date().toISOString(),
       logger: { info: () => undefined },
       llmBudget: createLlmBudget()

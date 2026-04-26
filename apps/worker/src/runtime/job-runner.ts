@@ -1,5 +1,5 @@
 import { seedAgentDefinitions, createLlmBudget } from "@personal-agent-os/agent-sdk";
-import type { ExecutionContext } from "@personal-agent-os/agent-sdk";
+import type { RunContext } from "@personal-agent-os/agent-sdk";
 import { createToolRegistry } from "../tools/registry.js";
 import type { Job } from "@personal-agent-os/shared";
 import { executeDAG } from "./dag-engine.js";
@@ -12,11 +12,8 @@ export async function runJob(job: Job) {
     throw new Error(`Unknown agent definition for dag: ${job.dagId}`);
   }
 
-  const context: ExecutionContext = {
-    jobInput: job.inputs,
+  const context: RunContext = {
     registry: createToolRegistry(),
-    nodeOutputs: {},
-    memoryStore: {},
     now: () => new Date().toISOString(),
     logger: { info: () => undefined },
     llmBudget: createLlmBudget()

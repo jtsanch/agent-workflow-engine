@@ -286,7 +286,7 @@ function buildFeedback(nodeId: string, result: EvaluationResult, now: string): N
     id: createId("feedback"),
     nodeExecutionId: "",
     sourceNodeId: nodeId,
-    targetNodeId: result.retryTargetNodeId ?? "",
+    targetNodeId: result.shouldRetry ? result.retryTargetNodeId ?? "" : "",
     score: result.score,
     shouldRetry: result.shouldRetry,
     summary: result.issues.join("; ") || (result.passed ? "Output passed evaluator review." : "Evaluator reported issues."),

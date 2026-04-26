@@ -245,9 +245,9 @@ describe("retry-manager", () => {
 
     expect(targets).toEqual(["draft", "reviewer", "summary"]);
     expect(state.isRetryPending("draft")).toBe(true);
-    expect(state.getNodeOutput("draft")).toBeUndefined();
-    expect(state.getNodeOutput("summary")).toBeUndefined();
-    expect(state.getNodeOutput("reviewer")).toBeUndefined();
+    expect(state.getNodeOutputs("draft")).toBeUndefined();
+    expect(state.getNodeOutputs("summary")).toBeUndefined();
+    expect(state.getNodeOutputs("reviewer")).toBeUndefined();
     expect(feedback.targetNodeId).toBe("draft");
   });
 

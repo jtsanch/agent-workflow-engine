@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentDAG, AgentNode, NodeFeedback, NodeExecution } from "@personal-agent-os/shared";
-import type { RunContext } from "../../../../../packages/agent-sdk/src/types.js";
+import type {RunContext} from '@personal-agent-os/agent-sdk';
 import { ExecutionState } from "../../../src/runtime/execution-state.js";
 
 vi.mock("../../../src/runtime/node-runner.js", () => ({
@@ -426,9 +426,9 @@ describe("dag-engine helpers", () => {
 
     expect(state.isRetryPending("draft")).toBe(true);
     expect(state.getRetryCount("draft")).toBe(1);
-    expect(state.getNodeOutput("draft")).toBeUndefined();
-    expect(state.getNodeOutput("review")).toBeUndefined();
-    expect(state.getNodeOutput("publish")).toBeUndefined();
+    expect(state.getNodeOutputs("draft")).toBeUndefined();
+    expect(state.getNodeOutputs("review")).toBeUndefined();
+    expect(state.getNodeOutputs("publish")).toBeUndefined();
     expect(feedback.targetNodeId).toBe("draft");
     expect(state.nodeOutputs.draft).toBeUndefined();
     expect(state.nodeOutputs.review).toBeUndefined();

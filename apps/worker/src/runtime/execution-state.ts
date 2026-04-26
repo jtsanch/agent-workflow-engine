@@ -37,19 +37,28 @@ export class ExecutionState {
     return this.ensureNodeInstance(nodeId).nodeInstanceId;
   }
 
-  getNodeOutput(nodeId: string): NodeOutput | undefined {
-    const entries = this.nodeOutputs?.[nodeId];
-    if (!entries) {
+  getInstanceIdsForNode(nodeId: string): string[] {
+    return Object.values(this.nodeInstances)
+        .filter(nodeInstance => nodeInstance.nodeId === nodeId)
+        .map((nodeInstance: NodeInstance) => nodeInstance.nodeInstanceId);
+  }
+
+  getNodeOutputs(nodeId: string): NodeOutput[] | undefined {
+    const nodeInstanceIds = this.getInstanceIdsForNode(nodeId);
+    if (!nodeInstanceIds || nodeInstanceIds.length === 0) {
       return undefined;
     }
-
+    if (nodeInstanceIds.length > 1) {
+      throw new Error("Fan out not supported");
+    }
+    const entries = this.nodeOutputs[nodeInstanceIds[0]] || [];
     for (let index = entries.length - 1; index >= 0; index -= 1) {
       const entry = entries[index];
-      if (entry.success === true) {
-        return {
+      if (entry.success) {
+        return [{
           data: entry.data,
           artifacts: entry.artifacts ?? []
-        };
+        }];
       }
     }
     return undefined;

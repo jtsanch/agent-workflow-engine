@@ -63,10 +63,7 @@ function getRunnableNodes(dag: AgentDAG, state: ExecutionState): AgentNode[] {
 }
 
 function resolveNodeInput(node: AgentNode, state: ExecutionState): Record<string, unknown> {
-  return resolveInputBindings(node.input?.bindings, {
-    input: state.input,
-    nodeOutputs: state.nodeOutputs,
-  });
+  return resolveInputBindings(node.input?.bindings, state);
 }
 
 function createFailureExecution(
@@ -341,6 +338,7 @@ export async function executeDAG(
     memoryWrites: []
   };
 }
+
 function collectFinalOutputs(
     dag: AgentDAG,
     state: ExecutionState
@@ -351,11 +349,16 @@ function collectFinalOutputs(
     .sort((left, right) => left.localeCompare(right));
 
   if (exitNodeIds.length === 1) {
-    return state.getNodeOutput(exitNodeIds[0])?.data;
+    const exitNodeOutputs = state.getNodeOutputs(exitNodeIds[0]) || [];
+    return exitNodeOutputs.length === 1 ? exitNodeOutputs[0].data : undefined;
   }
 
   return Object.fromEntries(
-    exitNodeIds.map((nodeId) => [nodeId, state.getNodeOutput(nodeId)?.data])
+    exitNodeIds.map((nodeId) => {
+      const exitNodeOutputs = state.getNodeOutputs(nodeId) || [];
+      const data = exitNodeOutputs.length === 1 ? exitNodeOutputs[0].data : undefined;
+      return [nodeId, data];
+    })
   );
 }
 

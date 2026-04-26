@@ -64,7 +64,8 @@ describe("ExecutionState", () => {
 
     state.store("start", { data: { ok: true }, artifacts: [] });
     expect(state.isCompleted("start")).toBe(true);
-    expect(state.getNodeOutput("start")).toEqual({ data: { ok: true }, artifacts: [] });
+    const startNodeOutputs = state.getNodeOutputs("start") || [];
+    expect(startNodeOutputs[0]).toEqual({ data: { ok: true }, artifacts: [] });
     expect(state.runtime.start).toEqual({
       status: "completed",
       retryCount: 0

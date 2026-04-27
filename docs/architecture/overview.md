@@ -1,342 +1,434 @@
 # Architecture Overview
 
-`personal-agent-os` is a config-driven agent workflow platform. Users create recurring jobs from agent definitions, and each definition now describes a DAG-based workflow instead of a single agent step.
+`personal-agent-os` is a config-driven workflow platform for running structured AI agents as repeatable jobs.
 
-The current architecture is intentionally simple:
+The system is designed around a clear separation of concerns:
 
-- `apps/web` is the control plane UI
-- `apps/api` is the REST control plane and persistence boundary
-- `apps/worker` is the workflow execution runtime
-- PostgreSQL is the system of record
-- EventBridge Scheduler is the intended trigger source for recurring runs
+* **Control Plane** → defines and schedules workflows
+* **Data Plane (Worker)** → executes workflows deterministically
 
-The system is designed to look like a small, readable workflow platform with room for future orchestration upgrades such as Step Functions.
+The architecture intentionally prioritizes:
 
-For diagram views of the same architecture, see [diagrams.md](/Users/travis/projects/agent-platform/docs/architecture/diagrams.md).
+* simplicity
+* observability
+* deterministic execution
+* extensibility for future orchestration features
 
-## Runtime Topology
+---
 
-- Web is hosted from S3 behind CloudFront
-- API is hosted on ECS Fargate behind an ALB
-- Worker is hosted on ECS Fargate
-- PostgreSQL runs on Amazon RDS
-- Scheduling is reconciled to Amazon EventBridge Scheduler
-- Secrets are expected in AWS Secrets Manager or SSM Parameter Store
+# System Overview
 
-## Layering
+## Components
 
-The backend continues to use explicit layering:
+* **Web (`apps/web`)**
 
-- controllers handle transport concerns
-- services handle workflow and domain logic
-- repositories isolate persistence
-- database adapters isolate storage implementation details
+    * Config-driven UI for creating and viewing jobs
+    * Renders workflows from definitions
 
-This keeps DAG execution concerns in the worker runtime and keeps the API focused on configuration, scheduling, queueing, and run visibility.
+* **API (`apps/api`)**
 
-## Core Domain Model
+    * Control plane for:
 
-### AgentDefinition
+        * job creation
+        * run queueing
+        * configuration validation
+    * Persists system state to PostgreSQL
 
-Defines a user-selectable workflow template.
+* **Worker (`apps/worker`)**
 
-- `key`, `name`, `description`
-- `inputSchema` for structured workflow inputs
-- `uiSchema` for config-driven form rendering
-- `dag` for execution topology
-- `defaultSchedule`
-- `alertPreferences`
+    * Executes DAG workflows
+    * Maintains in-memory execution state per run
+    * Persists execution telemetry
 
-### AgentDAG
+* **PostgreSQL**
 
-A workflow graph with:
+    * System of record for:
 
-- `nodes`
-- `edges`
-- `exitNodeId`
+        * jobs
+        * runs
+        * execution history
+        * DAG definitions
 
-### AgentNode
+* **Scheduler (EventBridge - planned)**
 
-Each node is one executable step in the workflow. Supported node types:
+    * Triggers recurring job runs
 
-- `llm`
-- `tool`
-- `evaluator`
-- `transform`
+---
 
-Important node properties:
+# Core Data Models
 
-- `agentKey`
-- `inputMapping`
-- `outputSchema`
-- optional `retryPolicy`
+## AgentDefinition
 
-### AgentEdge
+Defines a reusable workflow template.
 
-Describes graph relationships.
+* metadata (`key`, `name`, `description`)
+* `inputSchema` (structured inputs)
+* `uiSchema` (form rendering)
+* `dag` (execution definition)
 
-- `data` edges move structured outputs downstream
-- `feedback` edges allow evaluator nodes to trigger retries or replans
+---
 
-### Job
+## AgentDAG
 
-A job is the durable user-owned workflow configuration.
+Defines workflow structure.
 
-- `id`
-- `name`
-- `dagId`
-- optional `agentDefinitionKey` for compatibility lookup
-- `inputs`
-- schedule and alerts are stored in related tables
-- `status`
+```ts
+type AgentDAG = {
+  nodes: AgentNode[];
+};
+```
 
-### JobRun
+Important:
 
-A run is one execution instance of a job.
+* DAGs do **not** define edges
+* Dependencies are inferred from node input bindings
 
-- queued by API or scheduler
-- claimed by worker
-- updated to running, succeeded, or failed
+---
 
-### NodeExecution
+## AgentNode
 
-Per-node execution telemetry and runtime state.
+Represents a single execution step.
 
-- `input`
-- `output`
-- `latencyMs`
-- `tokenUsage`
-- `retryCount`
-- status and timestamps
+Supported types:
 
-### NodeFeedback
+* `tool`
+* `llm`
+* `evaluator`
+* `transform`
 
-Structured evaluator output used to guide retries.
+Each node defines:
 
-- `score`
-- `shouldRetry`
-- `summary`
-- `sourceNodeId`
-- `targetNodeId`
+* input bindings
+* output schema
+* optional retry policy
+
+---
+
+## ExecutionState
+
+Represents the **runtime state of a single DAG run**.
+
+It tracks:
+
+* node runtime status (`pending`, `running`, `completed`)
+* retry counts
+* append-only array `nodeOutputs`
+    * full execution history for each node instance
+    * append-only for immutability and observability
+* nodeInstances (future fan-out support, eg: run multiple instances of a node in parallel)
+    * Currently, each node has a single instance per run so `nodeInstanceId === nodeId`
+* initial job input
+    * immutable reference input for the DAG
+* final output (derived from exit nodes with no downstream dependencies)
+
+Key takeaways:
+> ExecutionState is **purely dynamic** and contains no static DAG structure.
+> This separation allows us to keep execution logic cleanly decoupled from DAG definition.
+> Currently stored in-memory for simplicity, but can be persisted if needed for durability or distributed execution.
 
-## Data Model
+---
 
-Current relational model spans:
+## NodeOutputs (Append-Only)
 
-- `jobs`
-- `job_schedules`
-- `job_alert_preferences`
-- `job_runs`
-- `job_run_steps`
-- `tool_invocations`
-- `job_memories`
-- `feedback_events`
-- `agent_dags`
-- `agent_nodes`
-- `agent_edges`
-- `job_dag_versions`
-- `node_executions`
-- `node_feedback`
+Each nodeInstance stores execution history:
 
-### Persistence Notes
+```ts
+nodeOutputs: {
+  [nodeInstanceId]: [
+    {
+      data,
+      artifacts,
+      success,
+      timestamp,
+      error
+    }
+  ]
+}
+```
 
-- `jobs` now store `dag_id` and `inputs`
-- DAG definitions are modeled relationally, with `agent_dags` as the root
-- `job_dag_versions` is reserved for snapshotting the DAG used by a job at creation or update time
-- `node_executions` captures observability for each DAG node run
-- `node_feedback` stores evaluator outputs that influence retry behavior
+Key invariants:
+* outputs are never deleted
+* retries append new entries
+* node instance outputs are ordered chronologically
+* node instance runs are single-threaded (no concurrent executions of the same node instance)
 
-## API Surface
+Key takeaways:
+> This design simplifies retry logic and provides observability into full execution history.
+> Append-only full history enables strong audit trails and post-mortem analysis
+> Rich future features are enabled by this design, such as: advanced analytics, debugging, LLM tuning, and potential rollbacks or time-travel queries.
 
-The current control-plane API provides:
+---
 
-- `GET /health`
-- `GET /ready`
-- `GET /agents`
-- `GET /jobs`
-- `POST /jobs`
-- `GET /runs`
-- `POST /runs`
-- `POST /runs/simulate`
-- `GET /alerts`
+# DAG Execution Model
 
-### API Responsibilities
+## Bindings Define the Graph
 
-- expose workflow templates to the UI
-- validate and persist job creation requests
-- queue runs into PostgreSQL
-- provide read models for jobs, runs, and alerts
-- support local inline simulation for debugging
+Node input bindings define both:
 
-The API is intentionally not the workflow executor. It is the control plane and queue boundary.
+* **data flow**
+   * Where data comes from (job input or other node outputs)
+* **execution dependencies**
+   * Node depends on the completion of any nodes it references in its input bindings
+* **logical edges** (implicitly)
+   * No explicit edge definitions are needed; the graph structure is derived from bindings
 
-## UI Flow
+* Example binding:
 
-The UI remains config-driven.
+```ts
+{
+  key: "meals",
+  ref: {
+    source: "node_output",
+    nodeId: "generateMeals"
+  }
+}
+```
 
-### Create Job
+This implies that the current node depends on the output of `generateMeals`, creating a logical edge in the DAG:
 
-When a user selects an agent definition:
+```text
+generateMeals → currentNode
+```
 
-- the UI loads the definition from `GET /agents`
-- renders the dynamic input form from `uiSchema`
-- shows a read-only DAG preview from `dag`
-- submits a job with `dagId`, `agentDefinitionKey`, `inputs`, schedule, and alerts
+---
 
-### Jobs and Runs
+## Compiled DAG (Internal)
 
-- Jobs page shows durable job configuration and DAG identity
-- Runs page shows run-level status and step visibility
-- full DAG editing is explicitly out of scope for the MVP
+At runtime, the system compiles the DAG into an optimized structure:
 
-## Execution Flow
+```ts
+type CompiledDAG = {
+  nodeMap: Map<NodeId, AgentNode>;
+  graph: {
+    forward: Record<NodeId, Set<NodeId>>;
+    reverse: Record<NodeId, Set<NodeId>>;
+  };
+};
+```
 
-### 1. Job Creation
+* `forward` → downstream traversal
+* `reverse` → dependency resolution
+* `nodeMap` → O(1) node lookup
 
-1. User selects an agent definition in the web app
-2. UI renders inputs and DAG preview
-3. UI posts job config to `POST /jobs`
-4. API validates with Zod and stores the job, schedule, and alerts
+This graph is:
 
-### 2. Run Queueing
+* derived from bindings
+* immutable
+* in memory cached and reused across runs
+* not persisted (can be recompiled from DAG definition if needed)
 
-Runs can be created in two ways:
+Key takeaways:
+> The Compiled DAG provides an efficient runtime representation for scheduling and execution.
+> It abstracts away the complexity of dependency resolution and allows for fast lookups during execution.
 
-- manual queueing through `POST /runs`
-- scheduled queueing by EventBridge Scheduler in the future
+---
 
-In both cases the API creates a `job_runs` record with status `queued`.
+## Job Execution Flow
 
-### 3. Worker Claim
+This is the heart of our DAG execution model, which consists of several key phases:
 
-1. Worker polls PostgreSQL for queued runs
-2. Worker claims one with `FOR UPDATE SKIP LOCKED`
-3. Worker marks the run `running`
+### 1. Initialization
 
-### 4. DAG Execution
+* load job input
+* compile DAG (or load from cache)
+* initialize ExecutionState
 
-The worker DAG engine:
+---
 
-1. initializes execution state from job inputs
-2. finds entry nodes or retry-ready nodes
-3. resolves node input mappings from job inputs and upstream outputs
-4. executes runnable nodes
-5. stores outputs in execution state
-6. records `node_executions`
-7. records `node_feedback` for evaluator nodes
-8. retries downstream targets when retry policy permits
-9. completes when the exit node has produced output
+### 2. Scheduling
+
+A node is runnable when:
+
+* it is not completed
+* it is not currently running
+* all dependencies (from `graph.reverse`) are completed
+
+Entry nodes emerge naturally:
+
+* nodes with no dependencies are immediately runnable
+
+---
+
+### 3. Execution
+
+For each runnable node:
+
+1. resolve input bindings
+2. execute node
+3. append output to nodeOutputs
+4. update runtime state
+5. record telemetry
+
+---
+
+### 4. Retry (Evaluator-Driven)
+
+* evaluator nodes produce structured feedback
+* feedback identifies a target node
+* target node retry count increments
+* downstream nodes are reset to `pending`
+* outputs are **not deleted**, append-only history is preserved
+
+---
 
 ### 5. Completion
 
-On success:
+The DAG completes when:
 
-- worker stores final run output on `job_runs`
-- worker writes `job_memories`
-- worker persists step and tool telemetry
+> All exit nodes are completed
 
-On failure:
+Exit nodes are defined as:
 
-- worker marks the run failed
-- stores an error message
+* nodes with no downstream dependents (`graph.forward[nodeId].length === 0`)
 
-## DAG Runtime Behavior
+---
 
-### Input Resolution
+# Worker Runtime Flow
 
-Node input mappings support:
+1. API inserts `job_runs` record (`queued`)
+2. Worker polls database
+3. Worker claims run (`FOR UPDATE SKIP LOCKED`)
+4. Worker executes DAG
+5. Worker persists:
 
-- `$job.someField` for job-level input access
-- `upstreamNode.outputField` for upstream dependency access
+    * node executions
+    * feedback
+    * tool calls
+    * final output
+6. Run marked `succeeded` or `failed`
 
-### Node Types
+---
 
-#### `tool`
+# Design Decisions
 
-- deterministic integration step
-- current MVP focus is `web_search.search`
+## 1. No Explicit Edges in DAG
 
-#### `llm`
+The dag structure is derived entirely from the definition's nodes and their input bindings.
 
-- reasoning or synthesis step
-- currently stubbed via `llm.generateText`
+* avoids duplication (edges vs bindings)
+* reduces config complexity
+* keeps DAG definition declarative
 
-#### `evaluator`
+---
 
-- scores an upstream output
-- can trigger retry on feedback edges
+## 2. Compiled Graph Layer
 
-#### `aggregator`
+We compile the DAG into an optimized in-memory structure for execution.
 
-- merges structured values from multiple inputs
+* avoids runtime scanning
+* enables O(1) lookups
+* clean separation of structure vs execution
 
-### Retry Model
+---
 
-Each node may define:
+## 3. Append-Only Outputs
 
-- `maxRetries`
-- `strategy`
+We never delete or mutate existing outputs; we only append new entries for retries.
 
-Current MVP behavior:
+* preserves full execution history
+* simplifies retry logic
+* improves observability
 
-- evaluator output can set `shouldRetry`
-- retry logic clears downstream state and re-runs targeted nodes
-- more advanced replan behavior is left as a TODO
+---
 
-## Sample Workflow: Daily Grocery Planner
+## 4. Separation of Concerns
 
-The sample DAG includes:
+We break up the workflow model into distinct layers.
 
-- `deals_agent` using `web_search.search`
-- `nutrition_agent` using `llm.generateText`
-- `price_agent` using `llm.generateText`
-- `meal_planner` using `llm.generateText`
-- `reviewer` as an evaluator
+* DAG definition: static structure defined by the user
+* compiled graph: optimized runtime representation derived from the definition for internal engine use
+* execution state: dynamic state of a single run, tracking progress and outputs without mutating the original DAG structure
 
-Flow:
+---
 
-1. `deals_agent` gathers external context
-2. `nutrition_agent` and `price_agent` analyze the deal set
-3. `meal_planner` synthesizes a plan
-4. `reviewer` scores the result
-5. feedback can send the workflow back for one refinement pass
+## 5. Evaluator-Driven Retry
 
-## Backward Compatibility
+Evaluators produce structured feedback that drives retries of target nodes and ensures downstream nodes are reset.
 
-The codebase still carries a compatibility path for single-agent execution:
+* enables structured refinement loops
+* keeps retry logic declarative
+* supports future replan strategies
+* prevents stale data issues by ensuring downstream nodes are re-executed with fresh data after an upstream retry
 
-- `Job` retains optional `agentDefinitionKey`
-- API simulation can fall back to legacy execution
-- worker runtime can still execute older non-DAG-shaped flows when necessary
 
-This is transitional and intended to make the evolution safer while the DAG path becomes the primary runtime.
+## 6. In-Memory Execution State
 
-## Orchestration Boundary
+Execution state is currently stored in memory for simplicity and performance.
 
-The current orchestration model is intentionally lightweight:
+* allows for fast access and updates during execution
+* simplifies implementation without needing to persist intermediate state
+* can be extended to support persistence if needed for durability or distributed execution in the future
 
-- API writes queued runs
-- worker claims and executes them
-- PostgreSQL is the coordination layer
+## 7. Node Execution Ids
+During execution, nodes from the DAG are created as "node instances" with unique `nodeInstanceId`s.
 
-This keeps the MVP easy to reason about and deploy. Future upgrades may include:
+* Currently, each node has a single instance per run, so `nodeInstanceId === nodeId`
+* Future fan-out support will allow multiple instances of the same node to run in parallel, each with its own nodeInstanceId
 
-- Step Functions for durable orchestration
-- a dedicated scheduler reconciliation service
-- higher-concurrency fan-out execution
-- human-in-the-loop approval steps
+## 8. Single-Threaded Node Execution
+Each node instance is executed in a single-threaded manner, meaning that retries of the same node instance will not run concurrently.
 
-## Deployment and Pipeline Notes
+* This simplifies the execution model and avoids issues with concurrent mutations of node outputs
+* Ensures node-instances are core units of execution and retry, with clear boundaries and state management
+* Enforces parallel execution to be defined in the DAG structure (eg: fan-out nodes w/ multiple instances) rather than through concurrent execution of the same node instance
 
-- migrations run as a dedicated step and are not part of API startup
-- API readiness is exposed at `GET /ready`
-- API liveness is exposed at `GET /health`
-- worker and API can scale independently
+---
 
-## TODOs
+# Tradeoffs
 
-- persist DAG definitions and snapshots more fully through repositories
-- add first-class APIs for DAG versions and node execution inspection
-- add DAG editor UI
-- wire real search, calendar, email, and IoT tools
-- add Step Functions integration when orchestration durability becomes a requirement
+Current system intentionally limits:
+
+* no parallel execution within a run
+* no fan-out support yet
+* in-memory graph cache only
+* simple scheduling model
+* no distributed execution
+* no advanced retry strategies (eg: replan)
+* no DAG editor UI
+* no DAG version snapshot loading
+* no support for dynamic DAG modifications at runtime
+
+These choices prioritize:
+
+* correctness
+* debuggability
+* fast iteration
+* MVP feature set
+* a solid foundation for future extensibility
+
+---
+
+# Out of Scope
+
+Planned but not yet implemented:
+
+## Near Term:
+* DAG editor UI for runtime DAG creation and visualization
+* fan-out / multi-instance nodes
+* dynamic DAG modifications at runtime
+* DAG version snapshot loading
+* advanced retry strategies (replan)
+
+## Further out
+* Distributed execution model
+* Scheduler for recurring jobs (eg: EventBridge integration)
+* Shared data state across runs (e.g. for memory, learning features, LLM tuning)
+* Caching of node outputs across runs (eg: for deterministic nodes or memoization)
+* Advanced analytics and debugging tools leveraging the append-only execution history (eg: time-travel queries, execution replay, LLM tuning based on past runs)
+
+---
+
+# Summary
+
+The system models workflows as:
+
+* declarative node definitions
+* binding-driven dependencies
+* compiled execution graphs
+* append-only execution history
+
+This creates a foundation that is:
+
+* easy to reason about
+* observable
+* extensible toward more advanced orchestration features

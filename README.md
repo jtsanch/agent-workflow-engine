@@ -1,12 +1,21 @@
-# personal-agent-os
+# Agent Workflow Engine
 
-Config-driven personal agent platform built as a TypeScript monorepo. The initial vertical slice supports:
+Config-driven agent platform for orchestrating multi-step workflows with structured inputs, execution tracking, and worker-based processing.
 
-- listing agent definitions
-- rendering a config-driven Create Job form in the web app
-- creating jobs through a REST API
-- listing jobs and runs
-- simulating a worker execution flow
+Built as a TypeScript monorepo with a focus on:
+
+- separating configuration from execution
+- enabling structured, multi-step workflows
+- supporting scalable worker-based processing
+- maintaining clear system boundaries across services
+
+## What This Demonstrates
+
+- Designing a multi-service system (API, worker, frontend)
+- Config-driven workflow definition and execution
+- Separation of concerns across controller, service, and persistence layers
+- Background job processing and execution tracking
+- Realistic infrastructure considerations (Postgres, ECS-style services)
 
 ## Vertical Slice
 

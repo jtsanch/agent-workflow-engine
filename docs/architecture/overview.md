@@ -279,7 +279,7 @@ The DAG completes when:
 
 Exit nodes are defined as:
 
-* nodes with no downstream dependents (`graph.forward[nodeId].length === 0`)
+* nodes with no downstream dependents (`graph.forward[nodeId].size === 0`)
 
 ---
 

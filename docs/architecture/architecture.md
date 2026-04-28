@@ -1,8 +1,16 @@
 # Architecture
 
-This document describes the architecture of `personal-agent-os`, including system design, execution model, data structures, and key design decisions.
+This document describes the current architecture of `personal-agent-os`, a config-driven personal agent platform built as a TypeScript monorepo.
 
-The system is designed as a deterministic workflow engine for AI-driven tasks, using a Directed Acyclic Graph (DAG) model.
+The current system focuses on a first vertical slice:
+
+- listing available agent definitions
+- rendering config-driven job creation forms
+- creating jobs through a REST API
+- listing jobs and runs
+- simulating a worker execution flow
+
+Future orchestration capabilities such as DAG execution, fan-out, scheduling, and distributed workflow coordination are intentionally out of scope for the current version.
 
 ---
 
@@ -10,271 +18,257 @@ The system is designed as a deterministic workflow engine for AI-driven tasks, u
 
 At a high level, the system consists of:
 
-- **DAG Definitions** — describe workflows as nodes and dependencies
-- **Execution Engine** — runs DAGs deterministically
-- **Node Runners** — execute specific node types (LLM, tool, transform, evaluator)
-- **Execution State** — tracks progress, outputs, and retries
-- **Tooling Layer** — external integrations and internal tools
+- **Web App** — renders agent definitions and config-driven job forms
+- **API Service** — exposes REST endpoints for agents, jobs, runs, and readiness checks
+- **Worker Service** — processes queued runs and simulates execution
+- **Shared Packages** — provide schemas, types, prompt helpers, SDK helpers, UI schema definitions, and observability utilities
+- **PostgreSQL** — stores jobs, runs, and run steps for local and production-like workflows
+- **Terraform Skeleton** — outlines AWS deployment infrastructure for future hosting
+
+The architecture separates frontend rendering, API coordination, worker execution, and shared domain definitions so each layer can evolve independently.
 
 ---
 
-## 2. Core Concepts
-
-### DAG (Directed Acyclic Graph)
-
-A workflow is defined as a DAG:
-
-- nodes represent units of work
-- edges represent dependencies
-- execution proceeds when dependencies are satisfied
-
----
-
-### Node Types
-
-The system supports explicit node types:
-
-#### LLM Node
-
-- calls a language model
-- structured input/output (often JSON)
-- supports retry and evaluation
-
-#### Tool Node
-
-- executes deterministic logic or external API calls
-- no model involvement
-- used for side effects or data fetching
-
-#### Transform Node
-
-- pure function
-- maps inputs to outputs
-- no external calls
-
-#### Evaluator Node
-
-- inspects outputs of other nodes
-- determines if retry or re-execution is required
-
----
-
-### Execution State
-
-Execution is tracked using a centralized state object:
-
-- node statuses (pending, running, completed, failed)
-- node outputs
-- retry counts
-- execution metadata (timing, logs)
-
----
-
-## 3. Data Model
-
-### Node Outputs
-
-Node outputs are stored as immutable artifacts:
-
-```ts
-nodeOutputs: Map<nodeId, NodeResult[]>
-```
-
-Key properties:
-
-- supports multiple outputs per node (fan-out)
-- append-only
-- used as the primary data source for downstream nodes
-
-### Node Instances
-
-For fan-out execution:
-
-```ts
-nodeInstanceId = `${nodeId}#${index}`
-```
-
-This allows:
-
-- multiple executions per node
-- independent retries
-- granular observability
-
-### Input Bindings
-
-Nodes define how inputs are resolved:
-
-```ts
-input: {
-  bindings: {
-    meals: { from: "generateMeals[*].output" }
-  }
-}
-```
-
-Bindings allow:
-
-- referencing prior node outputs
-- mapping over multiple results
-- explicit data dependencies
-
-## 4. Execution Flow
-
-Execution proceeds in deterministic phases:
-
-### Phase 1: Resolve Runnable Nodes
-
-- identify nodes whose dependencies are satisfied
-- ensure stable ordering (e.g. by node id)
-
-### Phase 2: Execute Nodes
-
-- run all runnable nodes
-- each node validates input schema
-- execution is delegated to a node runner
-
-### Phase 3: Collect Outputs
-
-- store outputs in execution state
-- append results per node instance
-
-### Phase 4: Apply Evaluators
-
-- evaluator nodes analyze outputs
-- determine if retry is required
-- schedule retries if needed
-
-### Phase 5: Repeat Until Complete
-
-continue until:
-
-- all nodes complete successfully
-- or retries are exhausted
-
-## 5. Fan-Out Execution Model
-
-The system supports a plan → execute → aggregate pattern.
-
-### Planning Phase
-
-An upstream node generates a list of inputs:
+## 2. Monorepo Layout
 
 ```txt
-planStrategies → [A, B, C]
+apps/
+  web/        React + Vite frontend
+  api/        REST API service
+  worker/     background runner
+
+packages/
+  shared/           domain types, Zod schemas, prompt helpers
+  agent-sdk/        agent and tool registration helpers
+  ui-schema/        config-driven form schema
+  observability/    logger and metrics utilities
+
+infra/
+  terraform/        AWS skeleton modules and dev environment
 ```
 
-### Fan-Out Execution
+## 3. Core Concepts
 
-A downstream node executes once per input:
+### Agent Definitions
 
-```txt
-generateMeal#0
-generateMeal#1
-generateMeal#2
-```
+Agents are defined through configuration rather than hardcoded UI or workflow logic.
 
-Each instance:
+An agent definition describes:
 
-- receives unique input
-- executes independently
-- produces its own output
+- the agent identifier
+- supported inputs
+- form schema
+- execution-related metadata
 
-### Aggregation Phase
+The web app uses these definitions to render job creation forms dynamically.
 
-A downstream node consumes all outputs:
+### Jobs
 
-```txt
-generateMeal[*] → aggregateMeals
-```
+A job represents a user-created request for an agent to perform work.
 
-### Design Constraint
+The API validates job input, stores the job, and exposes endpoints for listing and retrieving jobs.
 
-- no shared mutable state between parallel branches
+Current job flow:
 
-coordination occurs:
+Web form → POST /jobs → API validation → repository → database
 
-- before execution (planning)
-- after execution (aggregation)
+### Runs
 
-## 6. Parallel Execution
+A run represents an execution attempt for a job.
 
-The engine supports concurrent execution of independent nodes:
+The current system supports two execution paths:
 
-- nodes without dependencies can run in parallel
-- fan-out instances can execute concurrently
+- Simulated execution
+  POST /runs/simulate
+  useful for validating the end-to-end flow without a real worker pipeline
+- Queued execution
+  POST /runs
+  stores a queued run for worker processing
 
-Implementation:
+### Run Steps
 
-```ts
-await Promise.all(runnableNodes.map(runNode))
-```
+Run steps record the stages of a run.
 
-Constraints:
+They provide a basic execution history and create the foundation for future observability and debugging.
 
-- deterministic ordering of outputs
-- isolated execution per node instance
+## 4. API Architecture
 
-## 7. Retry Model
+The API follows a layered structure:
 
-Retries are driven by evaluator nodes.
+controller → service → repository → database
 
-### Behavior
+### Controllers
 
-- evaluator inspects node outputs
-- returns feedback indicating retry
-- scheduler resets node state
+Controllers handle:
 
-### Granularity
+- HTTP routing
+- request validation
+- response shaping
+- mapping errors to HTTP responses
 
-- retries occur at the node instance level
-- downstream nodes are reset if dependencies change
+### Services
 
-## 8. Design Decisions
+Services contain application logic, including:
 
-### Deterministic Execution
+- creating jobs
+- creating runs
+- coordinating simulated execution
+- enforcing workflow-level rules
 
-The system prioritizes predictability:
+### Repositories
 
-- no shared mutable state
-- explicit data flow
-- stable execution ordering
+Repositories isolate persistence logic from application logic.
 
-### Explicit Data Flow
+This keeps database access separate from request handling and makes the system easier to test.
 
-- all data is passed via node outputs
-- no implicit global state
-- input bindings define dependencies clearly
+## 5. Web Architecture
 
-### Isolation of Execution
+The web app is built around config-driven rendering.
 
-- each node instance executes independently
-- failures do not affect unrelated branches
+Instead of hardcoding a form for each agent, the frontend reads agent definitions and UI schemas to render forms dynamically.
 
-### Observability First
+Current frontend capabilities include:
 
-- all inputs/outputs are recorded
-- execution is replayable
-- debugging is straightforward
+- listing available agents
+- rendering a Create Job form from schema
+- submitting jobs to the API
+- listing jobs and runs
 
-## 9. Out of Scope (For Now)
+This keeps the frontend flexible as new agent definitions are added.
 
-The following are intentionally not part of the current architecture:
+## 6. Worker Architecture
 
-- distributed execution
-- persistent execution checkpoints
+The worker is responsible for background run processing.
+
+In the current version, the worker supports a simple queued execution model:
+
+POST /runs → queued run → worker polls → run steps recorded
+
+This is intentionally simpler than a full orchestration engine.
+
+The goal is to validate the basic execution lifecycle before introducing more advanced scheduling or DAG-based execution.
+
+## 7. Data Model
+
+The current data model centers around:
+
+- agents
+- jobs
+- runs
+- run steps
+
+### Jobs
+
+Jobs store the user request and validated input for an agent.
+
+### Runs
+
+Runs track execution attempts for a job.
+
+A job may eventually have multiple runs, though the current vertical slice focuses on basic creation and listing.
+
+### Run Steps
+
+Run steps provide structured execution history for a run.
+
+This creates a foundation for future execution tracing and observability.
+
+## 8. Execution Flow
+
+### Simulated Run Flow
+
+1. User creates a job
+2. API validates and stores the job
+3. User triggers a simulated run
+4. API creates run and step records
+5. UI lists the resulting run history
+
+This path is useful for validating the product flow without requiring real agent execution.
+
+### Worker Run Flow
+
+1. User creates a job
+2. API queues a run
+3. Worker polls for queued runs
+4. Worker processes the run
+5. Worker records run steps and status updates
+
+This path is the basis for future background execution.
+
+## 9. Current Design Decisions
+
+### Config-driven UI
+
+Agent forms are generated from schema definitions.
+
+This avoids hardcoding frontend forms and makes it easier to add new agent types.
+
+### Shared domain schemas
+
+Types and Zod schemas live in shared packages.
+
+This keeps API validation, frontend form rendering, and worker logic aligned around the same contracts.
+
+### Separate API and worker services
+
+The API handles request/response flows, while the worker handles background execution.
+
+This creates a clean boundary between synchronous user actions and asynchronous processing.
+
+### Migrations are explicit
+
+Database migrations are intentionally run as a separate step from API startup.
+
+This avoids unsafe behavior when multiple API containers start in parallel.
+
+### AWS infrastructure is skeletal
+
+Terraform exists to define the intended deployment shape, but the current priority is validating the local vertical slice before fully productionizing infrastructure.
+
+## 10. Out of Scope for Current Version
+
+The following are intentionally not part of the current implementation:
+
+- OAuth and user authentication
+- tenant isolation
+- production usage limits
+- real LLM provider integration
+- notification providers
+- EventBridge-based scheduling
+- DAG execution
+- fan-out / aggregation execution
+- persistent workflow checkpoints
+- distributed orchestration
 - DAG editing UI
-- marketplace or multi-tenant systems
-- long-term memory and learning systems
 
-These will be layered on after the core execution model is fully stable.
+These are future layers, not current assumptions.
+
+## 11. Future Direction
+
+The current architecture is designed to support future growth into a more capable agent workflow platform.
+
+Likely next steps include:
+
+- adding authentication and per-user access control
+- adding token or usage limits per user
+- wiring real LLM and notification providers
+- improving observability and metrics
+- adding scheduled job execution
+- evolving simple worker runs toward richer workflow execution
+
+The system is intentionally starting with a narrow vertical slice before adding orchestration complexity.
 
 ## Summary
 
-personal-agent-os is designed as a deterministic DAG-based execution engine with:
+personal-agent-os currently provides a config-driven foundation for creating and running personal agent jobs.
 
-- explicit data flow
-- isolated node execution
-- fan-out and aggregation support
-- evaluator-driven retries
+The system demonstrates:
 
-This architecture provides a strong foundation for building reliable, observable, and scalable AI workflows.
+- config-driven form rendering
+- REST-based job and run management
+- API / worker separation
+- shared schemas across packages
+- database-backed execution state
+- a clear path toward more advanced orchestration
+
+The current focus is not a full DAG engine yet. It is a disciplined first slice that validates the platform shape before adding more complex execution models.

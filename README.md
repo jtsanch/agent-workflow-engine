@@ -1,12 +1,35 @@
-# personal-agent-os
+# Agent Workflow Engine
 
-Config-driven personal agent platform built as a TypeScript monorepo. The initial vertical slice supports:
+Config-driven agent platform for orchestrating multi-step workflows with structured inputs, execution tracking, and worker-based processing.
 
-- listing agent definitions
-- rendering a config-driven Create Job form in the web app
-- creating jobs through a REST API
-- listing jobs and runs
-- simulating a worker execution flow
+Built as a TypeScript monorepo with a focus on:
+
+- separating configuration from execution
+- enabling structured, multi-step workflows
+- supporting scalable worker-based processing
+- maintaining clear system boundaries across services
+
+## What This Demonstrates
+
+- Designing a multi-service system (API, worker, frontend)
+- Config-driven workflow definition and execution
+- Separation of concerns across controller, service, and persistence layers
+- Background job processing and execution tracking
+- Realistic infrastructure considerations (Postgres, ECS-style services)
+
+## Vertical Slice
+
+1. `GET /agents` lists available agent definitions.
+2. `POST /jobs` validates and stores a new job.
+3. `GET /jobs` returns the created job.
+4. `POST /runs/simulate` performs a simulated worker run for a job.
+5. `GET /runs` shows the recorded runs and steps.
+
+For a more production-like path:
+
+1. `POST /runs` queues a run in PostgreSQL.
+2. `apps/worker` polls for queued runs and executes them.
+3. `GET /ready` checks whether the API is ready to serve traffic and whether the database is reachable.
 
 ## Monorepo Layout
 
@@ -127,20 +150,6 @@ Sample environment files are included in:
 - `apps/worker/.env.example`
 
 For local MVP usage, set `DB_DRIVER=postgres` for the API and worker and run migrations before starting services.
-
-## Vertical Slice
-
-1. `GET /agents` lists available agent definitions.
-2. `POST /jobs` validates and stores a new job.
-3. `GET /jobs` returns the created job.
-4. `POST /runs/simulate` performs a simulated worker run for a job.
-5. `GET /runs` shows the recorded runs and steps.
-
-For a more production-like path:
-
-1. `POST /runs` queues a run in PostgreSQL.
-2. `apps/worker` polls for queued runs and executes them.
-3. `GET /ready` checks whether the API is ready to serve traffic and whether the database is reachable.
 
 ## Architecture Notes
 

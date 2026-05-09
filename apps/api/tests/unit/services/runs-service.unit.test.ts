@@ -68,8 +68,8 @@ describe("RunsService", () => {
       agentCatalogService
     );
 
-    const queuedRun = await runsService.enqueueRun(createdJob.id);
-    const completedRun = await runsService.executeRun(createdJob.id);
+    const queuedRun = await runsService.enqueueRun(userContext, createdJob.id);
+    const completedRun = await runsService.executeRun(userContext, createdJob.id);
     const runs = await runsService.listRuns(userContext);
 
     expect(queuedRun.status).toBe("queued");
@@ -92,7 +92,39 @@ describe("RunsService", () => {
       new AgentCatalogService()
     );
 
-    await expect(runsService.enqueueRun("missing")).rejects.toMatchObject({
+    await expect(runsService.enqueueRun(userContext, "missing")).rejects.toMatchObject({
+      code: "job_not_found",
+      statusCode: 404
+    });
+  });
+
+  it("rejects run access for a job owned by another user", async () => {
+    const database = new InMemoryDatabase(createSeedTables());
+    const jobRepository = new InMemoryJobRepository(database);
+    const agentCatalogService = new AgentCatalogService();
+    const jobsService = new JobsService(
+      jobRepository,
+      new InMemoryJobScheduleRepository(database),
+      new InMemoryAlertPreferenceRepository(database),
+      agentCatalogService
+    );
+
+    const createdJob = await jobsService.createJob(createJobInput, {
+      userId: "other_user",
+      email: "other@example.com"
+    });
+
+    const runsService = new RunsService(
+      jobRepository,
+      new InMemoryJobRunRepository(database),
+      new InMemoryToolInvocationRepository(database),
+      new InMemoryNodeExecutionRepository(database),
+      new InMemoryNodeFeedbackRepository(database),
+      new InMemoryJobMemoryRepository(database),
+      agentCatalogService
+    );
+
+    await expect(runsService.executeRun(userContext, createdJob.id)).rejects.toMatchObject({
       code: "job_not_found",
       statusCode: 404
     });

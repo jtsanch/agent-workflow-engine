@@ -14,6 +14,7 @@ import type {
 } from "@personal-agent-os/shared";
 
 export interface DatabaseTables {
+  users: UserRecord[];
   jobs: Job[];
   schedules: JobSchedule[];
   alertPreferences: AlertPreference[];
@@ -24,6 +25,19 @@ export interface DatabaseTables {
   nodeFeedback: NodeFeedback[];
   memories: JobMemory[];
   feedbackEvents: FeedbackEvent[];
+}
+
+export interface UserRecord {
+  id: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+  clerkUserId: string;
+  status: "active" | "disabled";
+  role: "admin" | "user";
+  createdAt: string;
+  updatedAt: string;
+  lastLoginAt?: string;
 }
 
 export interface DatabaseAdapter {

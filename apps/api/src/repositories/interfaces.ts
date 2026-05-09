@@ -10,6 +10,55 @@ import type {
   NodeFeedback,
   ToolInvocation
 } from "@personal-agent-os/shared";
+import type { UserRecord } from "../db/database.js";
+
+export interface UserRepository {
+  create(user: UserRecord): Promise<UserRecord>;
+  findById(userId: string): Promise<UserRecord | null>;
+  findByClerkUserId(clerkUserId: string): Promise<UserRecord | null>;
+  listAll(): Promise<UserRecord[]>;
+  updateStatus(userId: string, status: UserRecord["status"]): Promise<void>;
+}
+
+export interface UsageSummaryRecord {
+  dailyUsed: number;
+  dailyLimit: number;
+  monthlyUsed: number;
+  monthlyLimit: number;
+  perRunLimit: number;
+}
+
+export interface UsageCounterRecord {
+  dailyTokens: number;
+  monthlyTokens: number;
+  lastDailyReset: string;
+  lastMonthlyReset: string;
+}
+
+export interface UsageEventRecord {
+  id: string;
+  userId: string;
+  jobId?: string;
+  jobRunId?: string;
+  model: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  createdAt: string;
+}
+
+export interface UsageEventPageRecord {
+  events: UsageEventRecord[];
+  nextCursor?: string;
+}
+
+export interface UserUsageRepository {
+  findSummaryByUserId(userId: string): Promise<UsageSummaryRecord | null>;
+  findCountersByUserId(userId: string): Promise<UsageCounterRecord | null>;
+  updateCounters(userId: string, counters: UsageCounterRecord): Promise<void>;
+  createEvent(event: UsageEventRecord): Promise<UsageEventRecord>;
+  listEventsByUserId(userId: string, cursor?: string, limit?: number): Promise<UsageEventPageRecord>;
+}
 
 export interface JobRepository {
   listByUser(userId: string): Promise<Job[]>;

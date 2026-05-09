@@ -17,12 +17,13 @@
     "format": "echo 'no-op'"
   },
   "dependencies": {
+    "@clerk/backend": "^3.4.7",
+    "@fastify/cors": "^10.0.0",
     "@personal-agent-os/agent-sdk": "workspace:*",
     "@personal-agent-os/observability": "workspace:*",
     "@personal-agent-os/shared": "workspace:*",
-    "@fastify/cors": "^10.0.0",
-    "drizzle-orm": "^0.45.2",
     "dotenv": "^17.2.3",
+    "drizzle-orm": "^0.45.2",
     "fastify": "^5.0.0",
     "pg": "^8.13.0",
     "zod": "^3.24.0"

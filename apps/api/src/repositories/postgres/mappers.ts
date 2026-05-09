@@ -24,7 +24,7 @@ export function mapJob(row: Record<string, unknown>): Job {
         ? String(row.agentDefinitionKey)
         : undefined,
     status: row.status as Job["status"],
-    inputs: asJsonObject(row.inputs ?? row.input),
+    inputs: asJsonObject(row.inputs),
     createdAt: new Date(String(row.created_at ?? row.createdAt)).toISOString(),
     updatedAt: new Date(String(row.updated_at ?? row.updatedAt)).toISOString()
   };

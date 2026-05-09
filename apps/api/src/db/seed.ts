@@ -2,6 +2,7 @@ import type { DatabaseTables } from "./database.js";
 
 export function createSeedTables(): DatabaseTables {
   return {
+    users: [],
     jobs: [],
     schedules: [],
     alertPreferences: [],

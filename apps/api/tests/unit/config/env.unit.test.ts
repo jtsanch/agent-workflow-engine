@@ -9,7 +9,9 @@ describe("loadConfig", () => {
       DB_DRIVER: "postgres",
       DATABASE_URL: "postgres://postgres:postgres@localhost:5433/personal_agent_os",
       AWS_REGION: "us-west-2",
-      DEFAULT_TIMEZONE: "America/Los_Angeles"
+      DEFAULT_TIMEZONE: "America/Los_Angeles",
+      CLERK_SECRET_KEY: "sk_test_example",
+      CLERK_PUBLISHABLE_KEY: "pk_test_example"
     });
 
     expect(config).toEqual({
@@ -18,7 +20,9 @@ describe("loadConfig", () => {
       dbDriver: "postgres",
       databaseUrl: "postgres://postgres:postgres@localhost:5433/personal_agent_os",
       awsRegion: "us-west-2",
-      defaultTimezone: "America/Los_Angeles"
+      defaultTimezone: "America/Los_Angeles",
+      clerkSecretKey: "sk_test_example",
+      clerkPublishableKey: "pk_test_example"
     });
   });
 });

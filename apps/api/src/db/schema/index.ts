@@ -10,7 +10,13 @@ import {
   nodeFeedback,
   toolInvocations
 } from "./runs.js";
+import { usageEvents, userLlmUsageLimits, userUsageCounters } from "./usage.js";
+import { users } from "./users.js";
 
+export const usersTable = pgTable("users", users);
+export const userLlmUsageLimitsTable = pgTable("user_llm_usage_limits", userLlmUsageLimits);
+export const userUsageCountersTable = pgTable("user_usage_counters", userUsageCounters);
+export const usageEventsTable = pgTable("usage_events", usageEvents);
 export const jobsTable = pgTable("jobs", jobs);
 export const jobSchedulesTable = pgTable("job_schedules", jobSchedules);
 export const jobAlertPreferencesTable = pgTable("job_alert_preferences", jobAlertPreferences);
@@ -26,6 +32,10 @@ export const nodeExecutionsTable = pgTable("node_executions", nodeExecutions);
 export const nodeFeedbackTable = pgTable("node_feedback", nodeFeedback);
 
 export const schema = {
+  usersTable,
+  userLlmUsageLimitsTable,
+  userUsageCountersTable,
+  usageEventsTable,
   jobsTable,
   jobSchedulesTable,
   jobAlertPreferencesTable,

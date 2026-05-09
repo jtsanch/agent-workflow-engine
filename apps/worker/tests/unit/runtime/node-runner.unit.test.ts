@@ -137,6 +137,13 @@ describe("runNode", () => {
       artifacts: []
     });
     expect(result.execution.tokenUsage).toBe(0);
+    expect(result.usageEvent).toEqual({
+      model: "mock",
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+      createdAt: "2026-04-10T00:00:00.000Z"
+    });
   });
 
   it("executes a transform node", async () => {
@@ -432,11 +439,18 @@ describe("runEvaluatorNode", () => {
     try {
       const result = await runEvaluatorNode(node, { summary: "draft" }, llmContext);
 
-      expect(result).toMatchObject({
+      expect(result.result).toMatchObject({
         shouldRetry: true,
         signal: {
           retry: true
         }
+      });
+      expect(result.usageEvent).toEqual({
+        model: "mock-model",
+        promptTokens: 12,
+        completionTokens: 8,
+        totalTokens: 20,
+        createdAt: "2026-04-10T00:00:00.000Z"
       });
     } finally {
       if (openAiKey === undefined) {
@@ -523,8 +537,15 @@ describe("runEvaluatorNode", () => {
     try {
       const result = await runEvaluatorNode(node, { summary: "draft" }, llmContext);
 
-      expect(result.signal).toBeUndefined();
-      expect(result.shouldRetry).toBe(true);
+      expect(result.result.signal).toBeUndefined();
+      expect(result.result.shouldRetry).toBe(true);
+      expect(result.usageEvent).toEqual({
+        model: "mock-model",
+        promptTokens: 9,
+        completionTokens: 7,
+        totalTokens: 16,
+        createdAt: "2026-04-10T00:00:00.000Z"
+      });
     } finally {
       if (openAiKey === undefined) {
         delete process.env.OPENAI_API_KEY;

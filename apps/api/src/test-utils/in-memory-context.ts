@@ -10,6 +10,8 @@ export function createInMemoryAppContext(overrides: Partial<AppConfig> = {}): Ap
     databaseUrl: "postgres://postgres:postgres@localhost:5433/personal_agent_os",
     awsRegion: "us-west-2",
     defaultTimezone: "America/Los_Angeles",
+    clerkSecretKey: "sk_test_example",
+    clerkPublishableKey: "pk_test_example",
     ...overrides
   });
 }

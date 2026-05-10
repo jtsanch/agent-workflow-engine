@@ -147,6 +147,7 @@ describe("RunsService", () => {
       finalOutput: { data: { done: true }, artifacts: [] },
       nodeExecutions: [executionBase],
       nodeFeedback: [nodeFeedback],
+      memoryWrites: [],
       toolInvocations: []
     });
     const runsService = new RunsService(

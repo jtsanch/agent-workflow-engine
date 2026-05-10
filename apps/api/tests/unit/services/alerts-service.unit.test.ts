@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import type { UserContext } from "@personal-agent-os/shared";
+import type {AlertChannel, UserContext} from "@personal-agent-os/shared";
 import type { AlertPreferenceRepository, JobRepository } from "../../../src/repositories/interfaces.js";
+import type { JobStatus } from "@personal-agent-os/shared";
 import { AlertsService } from "../../../src/services/alerts-service.js";
 
 const userContext: UserContext = {
@@ -18,7 +19,7 @@ describe("AlertsService", () => {
           name: "Daily Grocery",
           dagId: "dag_grocery_planner",
           agentDefinitionKey: "grocery-planner",
-          status: "active",
+          status: "active" as JobStatus,
           inputs: {},
           createdAt: "2026-04-10T00:00:00.000Z",
           updatedAt: "2026-04-10T00:00:00.000Z"
@@ -32,7 +33,7 @@ describe("AlertsService", () => {
         {
           id: "alert_1",
           jobId: "job_1",
-          channel: "email",
+          channel: "email" as AlertChannel,
           destination: "user@example.com",
           onSuccess: true,
           onFailure: true

@@ -1,11 +1,10 @@
-import { describe, expect, it } from "vitest";
-import { InMemoryDatabase, PostgresDatabase } from "../../../src/db/database.js";
-import { createSeedTables } from "../../../src/db/seed.js";
+import { describe, expect, it, vi } from "vitest";
+import type { DatabaseAdapter } from "../../../src/db/database.js";
 import { HealthService } from "../../../src/services/health-service.js";
 
 describe("HealthService", () => {
   it("reports memory-backed readiness as healthy", async () => {
-    const service = new HealthService(new InMemoryDatabase(createSeedTables()));
+    const service = new HealthService({ kind: "memory" });
 
     await expect(service.getReadiness()).resolves.toEqual({
       ok: true,
@@ -16,11 +15,12 @@ describe("HealthService", () => {
   });
 
   it("reports postgres readiness as healthy when the query succeeds", async () => {
-    const service = new HealthService(
-      new PostgresDatabase({
-        query: async () => ({ rows: [] })
-      } as unknown as PostgresDatabase["pool"], {} as PostgresDatabase["db"])
-    );
+    const query = vi.fn(async () => ({ rows: [] }));
+    const postgresDatabase = {
+      kind: "postgres",
+      pool: { query }
+    } as unknown as DatabaseAdapter;
+    const service = new HealthService(postgresDatabase);
 
     await expect(service.getReadiness()).resolves.toEqual({
       ok: true,
@@ -28,16 +28,19 @@ describe("HealthService", () => {
         database: "ok"
       }
     });
+    expect(query).toHaveBeenCalledWith("select 1");
   });
 
   it("reports postgres readiness as degraded when the query fails", async () => {
-    const service = new HealthService(
-      new PostgresDatabase({
+    const postgresDatabase = {
+      kind: "postgres",
+      pool: {
         query: async () => {
           throw new Error("db unavailable");
         }
-      } as unknown as PostgresDatabase["pool"], {} as PostgresDatabase["db"])
-    );
+      }
+    } as unknown as DatabaseAdapter;
+    const service = new HealthService(postgresDatabase);
 
     await expect(service.getReadiness()).resolves.toEqual({
       ok: false,

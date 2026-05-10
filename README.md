@@ -145,7 +145,7 @@ Coverage for service CI is enforced through Vitest with the V8 provider and 80% 
 ## Tech stack
 
 - Node.js + TypeScript
-- Fastify for API serv
+- Fastify for API server
 - Vite + React for frontend
 - Zod for schema validation
 - PostgreSQL for data persistence

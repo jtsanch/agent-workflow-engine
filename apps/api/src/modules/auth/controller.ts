@@ -13,11 +13,11 @@ export function registerAuthController(
     const authContext = requireAuthContext(request.authContext);
 
     if (!userService) {
-      throw new AppError("User state not found", 500, "user_state_not_found");
+      throw new AppError("User service not configured", 500, "user_service_not_configured");
     }
 
     if (!userUsageService) {
-      throw new AppError("Usage state not found", 500, "usage_state_not_found");
+      throw new AppError("Usage usage service not configured", 500, "user_usage_service_not_configured");
     }
 
     const user = await userService.getRequiredById(authContext.localUserId);

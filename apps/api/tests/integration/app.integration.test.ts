@@ -124,8 +124,7 @@ describe("API integration", () => {
           status: "active",
           role: "user",
           createdAt: "2026-05-01T00:00:00.000Z",
-          updatedAt: "2026-05-01T00:00:00.000Z",
-          lastLoginAt: null
+          updatedAt: "2026-05-01T00:00:00.000Z"
         };
       }
     } satisfies Pick<UserService, "getRequiredById">) as unknown as typeof context.userService;
@@ -252,8 +251,7 @@ describe("API integration", () => {
           status: user.status,
           role: user.role,
           createdAt: "2026-05-01T00:00:00.000Z",
-          updatedAt: "2026-05-01T00:00:00.000Z",
-          lastLoginAt: null
+          updatedAt: "2026-05-01T00:00:00.000Z"
         };
       }
     } satisfies Pick<UserService, "getRequiredById">) as unknown as typeof context.userService;
@@ -435,8 +433,7 @@ describe("API integration", () => {
           status: user.status,
           role: user.role,
           createdAt: "2026-05-01T00:00:00.000Z",
-          updatedAt: "2026-05-01T00:00:00.000Z",
-          lastLoginAt: null
+          updatedAt: "2026-05-01T00:00:00.000Z"
         };
       }
     } satisfies Pick<UserService, "getRequiredById">) as unknown as typeof context.userService;

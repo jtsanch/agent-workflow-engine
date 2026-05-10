@@ -11,7 +11,7 @@
     "format": "echo 'no-op'"
   },
   "dependencies": {
-    "@clerk/clerk-react": "^5.22.0",
+    "@clerk/react": "^6.6.2",
     "@personal-agent-os/shared": "workspace:*",
     "@personal-agent-os/ui-schema": "workspace:*",
     "react": "^18.3.1",

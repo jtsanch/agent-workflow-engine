@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type {
+  UsageCounterRecord,
   UsageEventPageRecord,
+  UsageEventRecord,
   UsageSummaryRecord,
   UserUsageRepository
 } from "../../../src/repositories/interfaces.js";
@@ -15,7 +17,7 @@ class TestUserUsageRepository implements UserUsageRepository {
     return this.summary;
   }
 
-  async findCountersByUserId() {
+  async findCountersByUserId(): Promise<UsageCounterRecord | null> {
     throw new Error("not used");
   }
 
@@ -23,8 +25,8 @@ class TestUserUsageRepository implements UserUsageRepository {
     throw new Error("not used");
   }
 
-  async createEvent() {
-    throw new Error("not used");
+  async createEvent(event: UsageEventRecord): Promise<UsageEventRecord> {
+    return event;
   }
 
   async listEventsByUserId(): Promise<UsageEventPageRecord> {

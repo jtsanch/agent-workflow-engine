@@ -8,7 +8,7 @@ export const users = {
   clerkUserId: text("clerk_user_id").notNull().unique(),
   status: text("status").notNull(),
   role: text("role").notNull(),
-  createdAt: timestamp("created_at").notNull(),
-  updatedAt: timestamp("updated_at").notNull(),
-  lastLoginAt: timestamp("last_login_at")
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  lastLoginAt: timestamp("last_login_at", { withTimezone: true })
 };

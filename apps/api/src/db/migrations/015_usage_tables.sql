@@ -3,16 +3,16 @@ create table if not exists user_llm_usage_limits (
   daily_token_limit integer not null,
   monthly_token_limit integer not null,
   per_run_token_limit integer not null,
-  created_at timestamp not null,
-  updated_at timestamp not null
+  created_at timestamptz not null,
+  updated_at timestamptz not null
 );
 
 create table if not exists user_usage_counters (
   user_id uuid primary key references users(id),
   daily_tokens integer not null,
   monthly_tokens integer not null,
-  last_daily_reset timestamp not null,
-  last_monthly_reset timestamp not null
+  last_daily_reset timestamptz not null,
+  last_monthly_reset timestamptz not null
 );
 
 create table if not exists usage_events (
@@ -24,5 +24,5 @@ create table if not exists usage_events (
   prompt_tokens integer not null,
   completion_tokens integer not null,
   total_tokens integer not null,
-  created_at timestamp not null
+  created_at timestamptz not null
 );

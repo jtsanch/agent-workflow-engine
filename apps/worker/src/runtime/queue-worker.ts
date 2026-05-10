@@ -117,26 +117,32 @@ export async function processNextQueuedRun(pool: Pool): Promise<boolean> {
     return true;
   }
 
+  // Initialize variables for job_runs update
+  let jobStatus: 'succeeded' | 'failed' = 'succeeded';
+  let completedAt: string = new Date().toISOString();
+  let finalOutput: unknown = null;
+  let errorMessage: string | null = null;
+  let usageEventsToInsert: Array<UsageTelemetry & { id: string; userId: string; jobId: string; jobRunId: string }> = [];
+  let totalTokensUsed = 0;
+
   try {
     const now = new Date().toISOString();
     const usageState = await resetUsageCountersIfNeeded(pool, job.userId, now);
     if (isQuotaExceeded(usageState)) {
-      await pool.query("update job_runs set status = 'failed', completed_at = now(), error_message = $2 where id = $1", [
-        runId,
-        "Quota exceeded"
-      ]);
+      jobStatus = 'failed';
+      errorMessage = "Quota exceeded";
       return true;
     }
 
     const executionResult = await runJob(job);
-    const completedAt = new Date().toISOString();
+    completedAt = new Date().toISOString();
     const nodeExecutions = executionResult.nodeExecutions.map((nodeExecution) => ({
       ...nodeExecution,
       jobRunId: runId
     }));
     const toolInvocations = executionResult.toolInvocations;
     const memoryWrites = executionResult.memoryWrites;
-    const finalOutput = executionResult.finalOutput;
+    finalOutput = executionResult.finalOutput;
     const usageEvents = executionResult.usageEvents;
 
     await persistNodeExecutions(pool, nodeExecutions);
@@ -173,38 +179,25 @@ export async function processNextQueuedRun(pool: Pool): Promise<boolean> {
       );
     }
 
-    for (const usageEvent of usageEvents) {
-      await insertUsageEvent(pool, {
-        id: randomUUID(),
-        userId: job.userId,
-        jobId: job.id,
-        jobRunId: runId,
-        model: usageEvent.model,
-        promptTokens: usageEvent.promptTokens,
-        completionTokens: usageEvent.completionTokens,
-        totalTokens: usageEvent.totalTokens,
-        createdAt: usageEvent.createdAt
-      });
-    }
+    // Prepare usage events for consolidated insert in finally block
+    usageEventsToInsert = usageEvents.map((usageEvent) => ({
+      id: randomUUID(),
+      userId: job.userId,
+      jobId: job.id,
+      jobRunId: runId,
+      model: usageEvent.model,
+      promptTokens: usageEvent.promptTokens,
+      completionTokens: usageEvent.completionTokens,
+      totalTokens: usageEvent.totalTokens,
+      createdAt: usageEvent.createdAt
+    }));
 
-    await incrementUsageCounters(
-      pool,
-      job.userId,
-      usageEvents.reduce((sum, usageEvent) => sum + usageEvent.totalTokens, 0)
-    );
-
-    await pool.query(
-        `
-          update job_runs
-          set status = 'succeeded',
-              completed_at = $2,
-              output = $3::jsonb, error_message = null
-          where id = $1
-        `,
-        [runId, completedAt, JSON.stringify(finalOutput ?? null)]
-    );
+    totalTokensUsed = usageEvents.reduce((sum, usageEvent) => sum + usageEvent.totalTokens, 0);
+    jobStatus = 'succeeded';
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Worker execution failed";
+    // Capture error values for job_runs update
+    jobStatus = 'failed';
+    errorMessage = error instanceof Error ? error.message : "Worker execution failed";
     console.error(`Error executing job run ${runId}:`, error);
     if (error instanceof DAGExecutionError) {
       await persistNodeExecutions(pool, error.nodeExecutions.map((nodeExecution) => ({
@@ -212,11 +205,82 @@ export async function processNextQueuedRun(pool: Pool): Promise<boolean> {
         jobRunId: runId
       })));
     }
+  } finally {
+    // Transactional update: consolidate usage events insert and job_runs status update
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
 
-    await pool.query("update job_runs set status = 'failed', completed_at = now(), error_message = $2 where id = $1", [
-      runId,
-      message
-    ]);
+      // Insert all usage events in a single query
+      if (usageEventsToInsert.length > 0) {
+        const values: unknown[] = [];
+        const placeholders = usageEventsToInsert
+          .map((event, index) => {
+            const baseIndex = index * 9;
+            values.push(
+              event.id,
+              event.userId,
+              event.jobId,
+              event.jobRunId,
+              event.model,
+              event.promptTokens,
+              event.completionTokens,
+              event.totalTokens,
+              event.createdAt
+            );
+            return `($${baseIndex + 1}, $${baseIndex + 2}, $${baseIndex + 3}, $${baseIndex + 4}, $${baseIndex + 5}, $${baseIndex + 6}, $${baseIndex + 7}, $${baseIndex + 8}, $${baseIndex + 9})`;
+          })
+          .join(", ");
+
+        await client.query(
+          `
+            insert into usage_events (
+              id, user_id, job_id, job_run_id, model, prompt_tokens, completion_tokens, total_tokens, created_at
+            )
+            values ${placeholders}
+          `,
+          values
+        );
+
+        // Update usage counters with total tokens
+        await client.query(
+          `
+            update user_usage_counters
+            set daily_tokens = daily_tokens + $2,
+                monthly_tokens = monthly_tokens + $2
+            where user_id = $1
+          `,
+          [job.userId, totalTokensUsed]
+        );
+      }
+
+      // Update job_runs status based on success or failure
+      if (jobStatus === 'succeeded') {
+        await client.query(
+          `
+            update job_runs
+            set status = 'succeeded',
+                completed_at = $2,
+                output = $3::jsonb,
+                error_message = null
+            where id = $1
+          `,
+          [runId, completedAt, JSON.stringify(finalOutput ?? null)]
+        );
+      } else {
+        await client.query(
+          "update job_runs set status = 'failed', completed_at = now(), error_message = $2 where id = $1",
+          [runId, errorMessage]
+        );
+      }
+
+      await client.query("commit");
+    } catch (transactionError) {
+      await client.query("rollback");
+      console.error(`Error in job completion transaction for run ${runId}:`, transactionError);
+    } finally {
+      client.release();
+    }
   }
 
   return true;
@@ -313,17 +377,6 @@ function isSameUtcMonth(left: Date, right: Date): boolean {
   return left.getUTCFullYear() === right.getUTCFullYear() && left.getUTCMonth() === right.getUTCMonth();
 }
 
-async function incrementUsageCounters(pool: Pool, userId: string, totalTokens: number): Promise<void> {
-  await pool.query(
-    `
-      update user_usage_counters
-      set daily_tokens = daily_tokens + $2,
-          monthly_tokens = monthly_tokens + $2
-      where user_id = $1
-    `,
-    [userId, totalTokens]
-  );
-}
 
 async function persistNodeExecutions(pool: Pool, nodeExecutions: NodeExecution[]): Promise<void> {
   for (const nodeExecution of nodeExecutions) {
@@ -378,35 +431,6 @@ async function insertToolInvocation(pool: Pool, invocation: ToolInvocation): Pro
   );
 }
 
-async function insertUsageEvent(
-  pool: Pool,
-  event: UsageTelemetry & {
-    id: string;
-    userId: string;
-    jobId: string;
-    jobRunId: string;
-  }
-): Promise<void> {
-  await pool.query(
-    `
-      insert into usage_events (
-        id, user_id, job_id, job_run_id, model, prompt_tokens, completion_tokens, total_tokens, created_at
-      )
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-    `,
-    [
-      event.id,
-      event.userId,
-      event.jobId,
-      event.jobRunId,
-      event.model,
-      event.promptTokens,
-      event.completionTokens,
-      event.totalTokens,
-      event.createdAt
-    ]
-  );
-}
 
 export const __test__ = {
   getResetUsageState,

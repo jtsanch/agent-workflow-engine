@@ -108,7 +108,13 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
     headers: await getAuthHeaders(init?.headers)
   });
 
-  const payload = await response.json();
+  let payload;
+  try {
+    payload = await response.json();
+  } catch (error) {
+    throw new ApiError(`Failed to parse JSON response: ${error instanceof Error ? error.message : String(error)}`,
+        response.status);
+  }
   if (!response.ok) {
     throw new ApiError(
       payload?.error?.message ?? `Request failed with status ${response.status}`,

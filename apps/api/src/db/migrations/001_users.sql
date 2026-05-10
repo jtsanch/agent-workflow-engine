@@ -6,7 +6,7 @@ create table if not exists users (
   clerk_user_id text not null unique,
   status text not null,
   role text not null,
-  created_at timestamp not null,
-  updated_at timestamp not null,
+  created_at timestamptz not null,
+  updated_at timestamptz not null,
   last_login_at timestamp
 );

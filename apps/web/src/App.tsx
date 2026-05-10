@@ -1,4 +1,4 @@
-import { SignInButton, UserButton } from "@clerk/clerk-react";
+import {SignInButton, SignOutButton, UserButton} from "@clerk/react";
 import { Link, Route, Routes } from "react-router-dom";
 import { Button } from "./components/Button.js";
 import { AdminUsersPage } from "./pages/AdminUsersPage.js";
@@ -49,7 +49,9 @@ export function App() {
             <h1>Approval Pending</h1>
             <p className="page-header-description">Your account is pending approval.</p>
             <div className="auth-card-actions">
-              <UserButton afterSignOutUrl="/" />
+              <SignOutButton>
+                <Button variant="secondary">Sign Out</Button>
+              </SignOutButton>
             </div>
           </article>
         </main>
@@ -112,7 +114,9 @@ export function App() {
               </article>
             </div>
           </section>
-          <UserButton afterSignOutUrl="/" />
+          <SignOutButton>
+            <Button variant="secondary">Sign Out</Button>
+          </SignOutButton>
         </div>
       </aside>
       <main className="content">

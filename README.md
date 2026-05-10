@@ -34,8 +34,8 @@ For a more production-like path:
 ## Monorepo Layout
 
 - `apps/web`: React + Vite frontend for S3 + CloudFront
-- `apps/api`: REST API for ECS Fargate
-- `apps/worker`: background runner for ECS Fargate
+- `apps/api`: REST API - Fastify
+- `apps/worker`: background runner
 - `packages/shared`: domain types, Zod schemas, prompt helpers
 - `packages/agent-sdk`: agent and tool registration helpers
 - `packages/ui-schema`: config-driven form schema
@@ -141,6 +141,14 @@ pnpm --filter @personal-agent-os/worker test:coverage
 ```
 
 Coverage for service CI is enforced through Vitest with the V8 provider and 80% thresholds for lines, functions, statements, and branches.
+
+## Tech stack
+
+- Node.js + TypeScript
+- Fastify for API server
+- Vite + React for frontend
+- Zod for schema validation
+- PostgreSQL for data persistence
 
 ## Environment
 

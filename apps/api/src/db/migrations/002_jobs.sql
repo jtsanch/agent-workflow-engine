@@ -1,6 +1,6 @@
 create table if not exists jobs (
   id text primary key,
-  user_id text not null,
+  user_id uuid not null references users(id),
   agent_definition_key text,
   dag_id text,
   name text not null,
@@ -10,4 +10,3 @@ create table if not exists jobs (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-

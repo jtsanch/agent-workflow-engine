@@ -21,7 +21,7 @@ import type {
   JobScheduleRepository,
   NodeExecutionRepository,
   NodeFeedbackRepository,
-  ToolInvocationRepository
+  ToolInvocationRepository,
 } from "./interfaces.js";
 
 export class InMemoryJobRepository implements JobRepository {

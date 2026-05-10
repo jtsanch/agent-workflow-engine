@@ -1,9 +1,11 @@
-import { boolean, integer, jsonb, numeric, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, integer, jsonb, numeric, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import type { JsonValue, NodeOutput } from "@personal-agent-os/shared";
 
 export const jobRuns = {
   id: text("id").primaryKey(),
   jobId: text("job_id").notNull(),
+  userId: uuid("user_id"),
+  executedByType: text("executed_by_type").notNull().default("user"),
   status: text("status").notNull(),
   triggerSource: text("trigger_source").notNull(),
   startedAt: timestamp("started_at", { withTimezone: true }).notNull(),

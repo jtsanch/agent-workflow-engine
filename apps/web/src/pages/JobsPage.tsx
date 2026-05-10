@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "../components/Button.js";
 import { PageHeader } from "../components/PageHeader.js";
-import { executeRun, listJobs, queueRun } from "../lib/api.js";
+import { listJobs, queueRun } from "../lib/api.js";
 
 interface JobListItem {
   id: string;
@@ -51,15 +51,6 @@ export function JobsPage() {
                 }}
               >
                 Queue Run
-              </Button>
-              <Button
-                variant="primary"
-                onClick={async () => {
-                  await executeRun(job.id);
-                  await refresh();
-                }}
-              >
-                Execute Run
               </Button>
             </div>
           </article>

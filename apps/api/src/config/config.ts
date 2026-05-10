@@ -6,7 +6,9 @@ const schema = z.object({
   DB_DRIVER: z.enum(["memory", "postgres"]).default("memory"),
   DATABASE_URL: z.string().default("postgres://postgres:postgres@localhost:5433/personal_agent_os"),
   AWS_REGION: z.string().default("us-west-2"),
-  DEFAULT_TIMEZONE: z.string().default("America/Los_Angeles")
+  DEFAULT_TIMEZONE: z.string().default("America/Los_Angeles"),
+  CLERK_SECRET_KEY: z.string().min(1),
+  CLERK_PUBLISHABLE_KEY: z.string().min(1)
 });
 
 export type AppConfig = {
@@ -16,6 +18,8 @@ export type AppConfig = {
   databaseUrl: string;
   awsRegion: string;
   defaultTimezone: string;
+  clerkSecretKey: string;
+  clerkPublishableKey: string;
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -35,6 +39,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     dbDriver: data.DB_DRIVER,
     databaseUrl: data.DATABASE_URL,
     awsRegion: data.AWS_REGION,
-    defaultTimezone: data.DEFAULT_TIMEZONE
+    defaultTimezone: data.DEFAULT_TIMEZONE,
+    clerkSecretKey: data.CLERK_SECRET_KEY,
+    clerkPublishableKey: data.CLERK_PUBLISHABLE_KEY
   });
 }

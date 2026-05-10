@@ -12,6 +12,7 @@ import { compileDAG } from "./compile-dag.js";
 import { ExecutionState } from "./execution-state.js";
 import { resolveInputBindings } from "./input-resolver.js";
 import { runNode } from "./node-runner.js";
+import type { UsageTelemetry } from "./node-runner.js";
 import { applyEvaluatorRetry, shouldRetry } from "./retry-manager.js";
 import { validateDag } from "./schema-utils.js";
 
@@ -232,6 +233,10 @@ function collectOutputs(
   }
 }
 
+function collectUsageEvents(executedNodes: ExecutedNodeResult[]): UsageTelemetry[] {
+  return executedNodes.flatMap(({ result }) => (result.usageEvent ? [result.usageEvent] : []));
+}
+
 function collectOutputsForTests(
   executedNodes: ExecutedNodeResult[],
   _state: ExecutionState,
@@ -322,6 +327,7 @@ export type ExecutionResult = {
   nodeExecutions: NodeExecution[];
   toolInvocations: ToolInvocation[];
   nodeFeedback: NodeFeedback[];
+  usageEvents: UsageTelemetry[];
   memoryWrites: Array<{
     key: string;
     value: unknown;
@@ -343,6 +349,7 @@ export async function executeDAG(
   const state = new ExecutionState(initialInputs, dag);
   const nodeExecutions: NodeExecution[] = [];
   const nodeFeedback: NodeFeedback[] = [];
+  const usageEvents: UsageTelemetry[] = [];
   const terminalNodeIds = getTerminalNodeIds(dag);
 
   while (!terminalNodeIds.every((nodeId) => state.runtime[nodeId]?.status === "completed")) {
@@ -361,6 +368,7 @@ export async function executeDAG(
     );
 
     collectOutputs(executedNodes, nodeExecutions, nodeFeedback);
+    usageEvents.push(...collectUsageEvents(executedNodes));
     scheduleRetries(dag, executedNodes, state);
   }
 
@@ -369,6 +377,7 @@ export async function executeDAG(
     nodeExecutions,
     toolInvocations: collectToolInvocations(dag, nodeExecutions),
     nodeFeedback,
+    usageEvents,
     memoryWrites: []
   };
 }

@@ -38,8 +38,8 @@ describe("service integration", () => {
 
     const job = await context.jobsService.createJob(createJobInput, userContext);
     const alerts = await context.alertsService.listAlerts(userContext);
-    const queuedRun = await context.runsService.enqueueRun(job.id);
-    const completedRun = await context.runsService.executeRun(job.id);
+    const queuedRun = await context.runsService.enqueueRun(userContext, job.id);
+    const completedRun = await context.runsService.executeRun(userContext, job.id);
     const runs = await context.runsService.listRuns(userContext);
     const readiness = await context.healthService.getReadiness();
 

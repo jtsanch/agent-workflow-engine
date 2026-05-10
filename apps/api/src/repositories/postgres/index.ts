@@ -8,3 +8,5 @@ export * from "./job-schedules-repository.js";
 export * from "./node-executions-repository.js";
 export * from "./node-feedback-repository.js";
 export * from "./tool-invocations-repository.js";
+export * from "./user-usage-repository.js";
+export * from "./users-repository.js";

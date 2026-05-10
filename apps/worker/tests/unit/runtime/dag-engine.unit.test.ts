@@ -787,6 +787,7 @@ describe("executeDAG", () => {
       ],
       toolInvocations: [],
       nodeFeedback: [],
+      usageEvents: [],
       memoryWrites: []
     });
   });

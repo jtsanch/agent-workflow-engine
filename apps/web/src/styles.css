@@ -52,14 +52,26 @@ button {
   min-height: 100vh;
 }
 
+.shell-center {
+  grid-template-columns: 1fr;
+  place-items: center;
+}
+
 .sidebar {
   padding: 32px 24px;
   border-right: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(5, 13, 10, 0.55);
+  display: grid;
+  align-content: space-between;
+  gap: 24px;
 }
 
 .content {
   padding: 40px;
+}
+
+.content-narrow {
+  width: min(100%, 560px);
 }
 
 .nav {
@@ -72,6 +84,101 @@ button {
   padding: 12px 14px;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.04);
+}
+
+.sidebar-user {
+  display: grid;
+  gap: 10px;
+}
+
+.sidebar-user-name,
+.sidebar-user-meta,
+.usage-summary h2,
+.usage-summary-grid article p,
+.usage-summary-grid article strong {
+  margin: 0;
+}
+
+.sidebar-user-name {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.sidebar-user-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  color: rgba(233, 240, 234, 0.72);
+  font-size: 14px;
+}
+
+.sidebar-footer {
+  display: grid;
+  gap: 12px;
+}
+
+.auth-card {
+  display: grid;
+  gap: 18px;
+}
+
+.auth-card-actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.usage-summary {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.usage-summary-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.usage-summary-grid article {
+  display: grid;
+  gap: 4px;
+}
+
+.admin-user-card {
+  display: grid;
+  gap: 18px;
+}
+
+.admin-user-header {
+  align-items: start;
+}
+
+.admin-user-header h3,
+.admin-user-header p,
+.admin-user-usage article p,
+.admin-user-usage article strong {
+  margin: 0;
+}
+
+.admin-user-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.admin-user-usage {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.admin-user-usage article {
+  display: grid;
+  gap: 4px;
+}
+
+.admin-load-more {
+  margin-top: 20px;
 }
 
 .page-header {

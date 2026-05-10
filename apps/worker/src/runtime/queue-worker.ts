@@ -1,8 +1,10 @@
 import { Pool } from "pg";
 import { seedAgentDefinitions } from "@personal-agent-os/agent-sdk";
 import type { Job, JsonObject, NodeExecution, ToolInvocation } from "@personal-agent-os/shared";
+import { randomUUID } from "node:crypto";
 import { runJob } from "./job-runner.js";
 import { DAGExecutionError } from "./dag-engine.js";
+import type { UsageTelemetry } from "./node-runner.js";
 
 interface QueuedRunRow {
   run_id: string;
@@ -15,6 +17,24 @@ interface QueuedRunRow {
   input: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+}
+
+interface UsageStateRow {
+  daily_used: number;
+  daily_limit: number;
+  monthly_used: number;
+  monthly_limit: number;
+  last_daily_reset: string;
+  last_monthly_reset: string;
+}
+
+interface UsageState {
+  dailyUsed: number;
+  dailyLimit: number;
+  monthlyUsed: number;
+  monthlyLimit: number;
+  lastDailyReset: string;
+  lastMonthlyReset: string;
 }
 
 function toJsonObject(value: Record<string, unknown>): JsonObject {
@@ -35,7 +55,7 @@ async function claimNextQueuedRun(pool: Pool): Promise<{ runId: string; job: Job
           j.agent_definition_key,
           j.name as job_name,
           j.status as job_status,
-          coalesce(j.inputs, j.input) as input,
+          j.inputs as input,
           j.created_at,
           j.updated_at
         from job_runs jr
@@ -97,16 +117,33 @@ export async function processNextQueuedRun(pool: Pool): Promise<boolean> {
     return true;
   }
 
+  // Initialize variables for job_runs update
+  let jobStatus: 'succeeded' | 'failed' = 'succeeded';
+  let completedAt: string = new Date().toISOString();
+  let finalOutput: unknown = null;
+  let errorMessage: string | null = null;
+  let usageEventsToInsert: Array<UsageTelemetry & { id: string; userId: string; jobId: string; jobRunId: string }> = [];
+  let totalTokensUsed = 0;
+
   try {
+    const now = new Date().toISOString();
+    const usageState = await resetUsageCountersIfNeeded(pool, job.userId, now);
+    if (isQuotaExceeded(usageState)) {
+      jobStatus = 'failed';
+      errorMessage = "Quota exceeded";
+      return true;
+    }
+
     const executionResult = await runJob(job);
-    const completedAt = new Date().toISOString();
+    completedAt = new Date().toISOString();
     const nodeExecutions = executionResult.nodeExecutions.map((nodeExecution) => ({
       ...nodeExecution,
       jobRunId: runId
     }));
     const toolInvocations = executionResult.toolInvocations;
     const memoryWrites = executionResult.memoryWrites;
-    const finalOutput = executionResult.finalOutput;
+    finalOutput = executionResult.finalOutput;
+    const usageEvents = executionResult.usageEvents;
 
     await persistNodeExecutions(pool, nodeExecutions);
 
@@ -142,18 +179,25 @@ export async function processNextQueuedRun(pool: Pool): Promise<boolean> {
       );
     }
 
-    await pool.query(
-        `
-          update job_runs
-          set status = 'succeeded',
-              completed_at = $2,
-              output = $3::jsonb, error_message = null
-          where id = $1
-        `,
-        [runId, completedAt, JSON.stringify(finalOutput ?? null)]
-    );
+    // Prepare usage events for consolidated insert in finally block
+    usageEventsToInsert = usageEvents.map((usageEvent) => ({
+      id: randomUUID(),
+      userId: job.userId,
+      jobId: job.id,
+      jobRunId: runId,
+      model: usageEvent.model,
+      promptTokens: usageEvent.promptTokens,
+      completionTokens: usageEvent.completionTokens,
+      totalTokens: usageEvent.totalTokens,
+      createdAt: usageEvent.createdAt
+    }));
+
+    totalTokensUsed = usageEvents.reduce((sum, usageEvent) => sum + usageEvent.totalTokens, 0);
+    jobStatus = 'succeeded';
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Worker execution failed";
+    // Capture error values for job_runs update
+    jobStatus = 'failed';
+    errorMessage = error instanceof Error ? error.message : "Worker execution failed";
     console.error(`Error executing job run ${runId}:`, error);
     if (error instanceof DAGExecutionError) {
       await persistNodeExecutions(pool, error.nodeExecutions.map((nodeExecution) => ({
@@ -161,15 +205,178 @@ export async function processNextQueuedRun(pool: Pool): Promise<boolean> {
         jobRunId: runId
       })));
     }
+  } finally {
+    // Transactional update: consolidate usage events insert and job_runs status update
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
 
-    await pool.query("update job_runs set status = 'failed', completed_at = now(), error_message = $2 where id = $1", [
-      runId,
-      message
-    ]);
+      // Insert all usage events in a single query
+      if (usageEventsToInsert.length > 0) {
+        const values: unknown[] = [];
+        const placeholders = usageEventsToInsert
+          .map((event, index) => {
+            const baseIndex = index * 9;
+            values.push(
+              event.id,
+              event.userId,
+              event.jobId,
+              event.jobRunId,
+              event.model,
+              event.promptTokens,
+              event.completionTokens,
+              event.totalTokens,
+              event.createdAt
+            );
+            return `($${baseIndex + 1}, $${baseIndex + 2}, $${baseIndex + 3}, $${baseIndex + 4}, $${baseIndex + 5}, $${baseIndex + 6}, $${baseIndex + 7}, $${baseIndex + 8}, $${baseIndex + 9})`;
+          })
+          .join(", ");
+
+        await client.query(
+          `
+            insert into usage_events (
+              id, user_id, job_id, job_run_id, model, prompt_tokens, completion_tokens, total_tokens, created_at
+            )
+            values ${placeholders}
+          `,
+          values
+        );
+
+        // Update usage counters with total tokens
+        await client.query(
+          `
+            update user_usage_counters
+            set daily_tokens = daily_tokens + $2,
+                monthly_tokens = monthly_tokens + $2
+            where user_id = $1
+          `,
+          [job.userId, totalTokensUsed]
+        );
+      }
+
+      // Update job_runs status based on success or failure
+      if (jobStatus === 'succeeded') {
+        await client.query(
+          `
+            update job_runs
+            set status = 'succeeded',
+                completed_at = $2,
+                output = $3::jsonb,
+                error_message = null
+            where id = $1
+          `,
+          [runId, completedAt, JSON.stringify(finalOutput ?? null)]
+        );
+      } else {
+        await client.query(
+          "update job_runs set status = 'failed', completed_at = now(), error_message = $2 where id = $1",
+          [runId, errorMessage]
+        );
+      }
+
+      await client.query("commit");
+    } catch (transactionError) {
+      await client.query("rollback");
+      console.error(`Error in job completion transaction for run ${runId}:`, transactionError);
+    } finally {
+      client.release();
+    }
   }
 
   return true;
 }
+
+async function loadUsageState(pool: Pool, userId: string): Promise<UsageState> {
+  const result = await pool.query<UsageStateRow>(
+    `
+      select
+        c.daily_tokens as daily_used,
+        l.daily_token_limit as daily_limit,
+        c.monthly_tokens as monthly_used,
+        l.monthly_token_limit as monthly_limit,
+        c.last_daily_reset,
+        c.last_monthly_reset
+      from user_usage_counters c
+      inner join user_llm_usage_limits l on l.user_id = c.user_id
+      where c.user_id = $1
+      limit 1
+    `,
+    [userId]
+  );
+
+  const row = result.rows[0];
+  if (!row) {
+    throw new Error("Usage state not found");
+  }
+
+  return {
+    dailyUsed: Number(row.daily_used),
+    dailyLimit: Number(row.daily_limit),
+    monthlyUsed: Number(row.monthly_used),
+    monthlyLimit: Number(row.monthly_limit),
+    lastDailyReset: new Date(row.last_daily_reset).toISOString(),
+    lastMonthlyReset: new Date(row.last_monthly_reset).toISOString()
+  };
+}
+
+function getResetUsageState(state: UsageState, now: string): UsageState {
+  const nowDate = new Date(now);
+  const lastDailyReset = new Date(state.lastDailyReset);
+  const lastMonthlyReset = new Date(state.lastMonthlyReset);
+
+  return {
+    ...state,
+    dailyUsed: isSameUtcDay(lastDailyReset, nowDate) ? state.dailyUsed : 0,
+    monthlyUsed: isSameUtcMonth(lastMonthlyReset, nowDate) ? state.monthlyUsed : 0,
+    lastDailyReset: isSameUtcDay(lastDailyReset, nowDate) ? state.lastDailyReset : now,
+    lastMonthlyReset: isSameUtcMonth(lastMonthlyReset, nowDate) ? state.lastMonthlyReset : now
+  };
+}
+
+async function resetUsageCountersIfNeeded(pool: Pool, userId: string, now: string): Promise<UsageState> {
+  const state = await loadUsageState(pool, userId);
+  const nextState = getResetUsageState(state, now);
+
+  if (
+    nextState.dailyUsed === state.dailyUsed &&
+    nextState.monthlyUsed === state.monthlyUsed &&
+    nextState.lastDailyReset === state.lastDailyReset &&
+    nextState.lastMonthlyReset === state.lastMonthlyReset
+  ) {
+    return state;
+  }
+
+  await pool.query(
+    `
+      update user_usage_counters
+      set daily_tokens = $2,
+          monthly_tokens = $3,
+          last_daily_reset = $4,
+          last_monthly_reset = $5
+      where user_id = $1
+    `,
+    [userId, nextState.dailyUsed, nextState.monthlyUsed, nextState.lastDailyReset, nextState.lastMonthlyReset]
+  );
+
+  return nextState;
+}
+
+function isQuotaExceeded(state: UsageState): boolean {
+  return state.dailyUsed >= state.dailyLimit || state.monthlyUsed >= state.monthlyLimit;
+}
+
+function isSameUtcDay(left: Date, right: Date): boolean {
+  return (
+    left.getUTCFullYear() === right.getUTCFullYear() &&
+    left.getUTCMonth() === right.getUTCMonth() &&
+    left.getUTCDate() === right.getUTCDate()
+  );
+}
+
+function isSameUtcMonth(left: Date, right: Date): boolean {
+  return left.getUTCFullYear() === right.getUTCFullYear() && left.getUTCMonth() === right.getUTCMonth();
+}
+
 
 async function persistNodeExecutions(pool: Pool, nodeExecutions: NodeExecution[]): Promise<void> {
   for (const nodeExecution of nodeExecutions) {
@@ -223,3 +430,9 @@ async function insertToolInvocation(pool: Pool, invocation: ToolInvocation): Pro
     ]
   );
 }
+
+
+export const __test__ = {
+  getResetUsageState,
+  isQuotaExceeded
+};

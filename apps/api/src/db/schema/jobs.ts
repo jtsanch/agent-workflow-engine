@@ -1,8 +1,8 @@
-import { boolean, jsonb, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, jsonb, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 export const jobs = {
   id: text("id").primaryKey(),
-  userId: text("user_id").notNull(),
+  userId: uuid("user_id").notNull(),
   agentDefinitionKey: text("agent_definition_key"),
   dagId: text("dag_id"),
   name: text("name").notNull(),

@@ -19,6 +19,7 @@ export interface NodeRunnerResult {
   output: NodeOutput;
   execution: NodeExecution;
   feedback?: NodeFeedback;
+  usageEvent?: UsageTelemetry;
   data?: Record<string, unknown>;
   diagnostics?: {
     usedFallbacks?: string[];
@@ -26,6 +27,14 @@ export interface NodeRunnerResult {
     constraintResults?: Record<string, boolean>;
     signals?: Record<string, unknown>;
   };
+}
+
+export interface UsageTelemetry {
+  model: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  createdAt: string;
 }
 
 function createId(prefix: string): string {
@@ -264,21 +273,25 @@ export async function runEvaluatorNode(
   node: EvaluatorNode,
   input: Record<string, unknown>,
   context: RunContext
-): Promise<EvaluationResult> {
+): Promise<{ result: EvaluationResult; usageEvent?: UsageTelemetry }> {
   const llmOutput = await runLLMNode(node, input, context);
   const result = llmOutput.parsed as EvaluationResult;
+  const usageEvent = createUsageTelemetry(llmOutput, context.now());
 
   if (result.shouldRetry && node.execution?.retryPolicy) {
     return {
-      ...result,
-      signal: {
-        ...(result.signal ?? {}),
-        retry: true
-      }
+      result: {
+        ...result,
+        signal: {
+          ...(result.signal ?? {}),
+          retry: true
+        }
+      },
+      usageEvent
     };
   }
 
-  return result;
+  return { result, usageEvent };
 }
 
 function buildFeedback(nodeId: string, result: EvaluationResult, now: string): NodeFeedback {
@@ -291,6 +304,21 @@ function buildFeedback(nodeId: string, result: EvaluationResult, now: string): N
     shouldRetry: result.shouldRetry,
     summary: result.issues.join("; ") || (result.passed ? "Output passed evaluator review." : "Evaluator reported issues."),
     createdAt: now
+  };
+}
+
+function createUsageTelemetry(llmOutput: LLMOutput, createdAt: string): UsageTelemetry | undefined {
+  const model = typeof llmOutput.metadata?.model === "string" ? llmOutput.metadata.model : undefined;
+  if (!model) {
+    return undefined;
+  }
+
+  return {
+    model,
+    promptTokens: Number(llmOutput.usage?.inputTokens ?? 0),
+    completionTokens: Number(llmOutput.usage?.outputTokens ?? 0),
+    totalTokens: Number(llmOutput.usage?.totalTokens ?? 0),
+    createdAt
   };
 }
 
@@ -307,6 +335,7 @@ export async function runNode(
   let result: unknown;
   let tokenUsage = 0;
   let feedback: NodeFeedback | undefined;
+  let usageEvent: UsageTelemetry | undefined;
 
   switch (node.type) {
     case "tool": {
@@ -330,13 +359,16 @@ export async function runNode(
           ? llmOutput.parsed
           : llmOutput.text;
       tokenUsage = Number(llmOutput.usage?.totalTokens ?? 0);
+      usageEvent = createUsageTelemetry(llmOutput, context.now());
       break;
     }
     case "evaluator": {
-      const evaluatorResult = await runEvaluatorNode(node, input, context);
+      const evaluatorOutput = await runEvaluatorNode(node, input, context);
+      const evaluatorResult = evaluatorOutput.result;
       const { signal, ...schemaSafeResult } = evaluatorResult;
       result = schemaSafeResult;
       feedback = buildFeedback(node.id, evaluatorResult, context.now());
+      usageEvent = evaluatorOutput.usageEvent;
       break;
     }
     case "condition": {
@@ -379,5 +411,5 @@ export async function runNode(
     feedback.nodeExecutionId = execution.id;
   }
 
-  return { output, execution, feedback, data: dataPatch };
+  return { output, execution, feedback, usageEvent, data: dataPatch };
 }

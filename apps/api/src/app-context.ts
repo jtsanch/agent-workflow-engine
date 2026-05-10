@@ -4,7 +4,6 @@ import { createSeedTables } from "./db/seed.js";
 import { InMemoryDatabase, PostgresDatabase } from "./db/database.js";
 import {
   InMemoryAlertPreferenceRepository,
-  InMemoryFeedbackEventRepository,
   InMemoryJobMemoryRepository,
   InMemoryJobRepository,
   InMemoryJobRunRepository,
@@ -16,7 +15,6 @@ import {
 } from "./repositories/memory.js";
 import {
   PostgresAlertPreferenceRepository,
-  PostgresFeedbackEventRepository,
   PostgresJobMemoryRepository,
   PostgresJobRepository,
   PostgresJobRunRepository,
@@ -24,17 +22,28 @@ import {
   PostgresJobScheduleRepository,
   PostgresNodeExecutionRepository,
   PostgresNodeFeedbackRepository,
-  PostgresToolInvocationRepository
+  PostgresToolInvocationRepository,
+  PostgresUserRepository,
+  PostgresUserUsageRepository
 } from "./repositories/postgres/index.js";
+import { AuthContextService, type AuthContextAuthenticator } from "./services/auth-context-service.js";
 import { AgentCatalogService } from "./services/agent-catalog.js";
+import { AdminUsersService } from "./services/admin-users-service.js";
 import { AlertsService } from "./services/alerts-service.js";
 import { HealthService } from "./services/health-service.js";
 import { JobsService } from "./services/jobs-service.js";
 import { RunsService } from "./services/runs-service.js";
 import { SearchService } from "./services/search-service.js";
+import { UserBootstrapService } from "./services/user-bootstrap-service.js";
+import { UserService } from "./services/user-service.js";
+import { UserUsageService } from "./services/user-usage-service.js";
 
 export interface AppContext {
   config: AppConfig;
+  authContextService: AuthContextAuthenticator | null;
+  userService: UserService | null;
+  userUsageService: UserUsageService | null;
+  adminUsersService: AdminUsersService | null;
   healthService: HealthService;
   agentCatalogService: AgentCatalogService;
   jobsService: JobsService;
@@ -87,11 +96,15 @@ export function createAppContext(config: AppConfig): AppContext {
     database.kind === "postgres"
       ? new PostgresJobMemoryRepository(database)
       : new InMemoryJobMemoryRepository(database);
-  const feedbackEventRepository =
-    database.kind === "postgres"
-      ? new PostgresFeedbackEventRepository(database)
-      : new InMemoryFeedbackEventRepository(database);
-  void feedbackEventRepository;
+  const userRepository = database.kind === "postgres" ? new PostgresUserRepository(database) : null;
+  const userUsageRepository = database.kind === "postgres" ? new PostgresUserUsageRepository(database) : null;
+  const userService = userRepository ? new UserService(userRepository) : null;
+  const userBootstrapService = database.kind === "postgres" ? new UserBootstrapService(database) : null;
+  const userUsageService = userUsageRepository ? new UserUsageService(userUsageRepository) : null;
+  const adminUsersService =
+    userRepository && userUsageService ? new AdminUsersService(userRepository, userUsageService) : null;
+  const authContextService =
+    userService && userBootstrapService ? new AuthContextService(userService, userBootstrapService) : null;
 
   const jobsService = new JobsService(
     jobRepository,
@@ -114,6 +127,10 @@ export function createAppContext(config: AppConfig): AppContext {
 
   return {
     config,
+    authContextService,
+    userService,
+    userUsageService,
+    adminUsersService,
     healthService,
     agentCatalogService,
     jobsService,

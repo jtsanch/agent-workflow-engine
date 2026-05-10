@@ -81,9 +81,12 @@ export class RunsService {
     }));
   }
 
-  async enqueueRun(jobId: string): Promise<JobRun> {
+  async enqueueRun(userContext: UserContext, jobId: string): Promise<JobRun> {
     const job = await this.jobRepository.findById(jobId);
     if (!job) {
+      throw new AppError(`Unknown job: ${jobId}`, 404, "job_not_found");
+    }
+    if (job.userId !== userContext.userId) {
       throw new AppError(`Unknown job: ${jobId}`, 404, "job_not_found");
     }
 
@@ -98,9 +101,12 @@ export class RunsService {
     return this.jobRunRepository.create(run);
   }
 
-  async executeRun(jobId: string): Promise<JobRun> {
+  async executeRun(userContext: UserContext, jobId: string): Promise<JobRun> {
     const job = await this.jobRepository.findById(jobId);
     if (!job) {
+      throw new AppError(`Unknown job: ${jobId}`, 404, "job_not_found");
+    }
+    if (job.userId !== userContext.userId) {
       throw new AppError(`Unknown job: ${jobId}`, 404, "job_not_found");
     }
 

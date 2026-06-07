@@ -2,6 +2,7 @@ import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import { createPostgresClient } from "../../../src/db/client.js";
 import { PostgresDatabase } from "../../../src/db/database.js";
 import { runMigrations } from "../../../src/db/migrate.js";
+import { pquery } from "../../../src/db/pquery.js";
 
 export async function createRepositoryTestContext() {
   const container = await new PostgreSqlContainer("postgres:16-alpine").start();
@@ -13,7 +14,8 @@ export async function createRepositoryTestContext() {
   return {
     database,
     async reset() {
-      await pool.query(
+      await pquery(
+        pool,
         "truncate table node_feedback, node_executions, tool_invocations, job_runs, job_memories, job_alert_preferences, job_schedules, jobs, users restart identity cascade"
       );
     },

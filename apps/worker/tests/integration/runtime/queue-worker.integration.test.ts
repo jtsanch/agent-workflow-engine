@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Pool } from "pg";
 
 vi.mock("../../../src/runtime/job-runner.js", () => ({
   runJob: vi.fn()
@@ -7,6 +6,12 @@ vi.mock("../../../src/runtime/job-runner.js", () => ({
 
 import { processNextQueuedRun } from "../../../src/runtime/queue-worker.js";
 import { runJob } from "../../../src/runtime/job-runner.js";
+import type {
+  ClaimedRunRecord,
+  FinalizeRunRecord,
+  UsageStateRecord,
+  WorkerPersistenceRepository
+} from "../../../src/repositories/interfaces.js";
 
 const runJobMock = vi.mocked(runJob);
 
@@ -20,17 +25,7 @@ type FakeJobRun = {
   output?: unknown;
 };
 
-type FakeJob = {
-  id: string;
-  userId: string;
-  dagId: string;
-  agentDefinitionKey: string | null;
-  name: string;
-  status: string;
-  inputs: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
-};
+type FakeJob = ClaimedRunRecord["job"];
 
 type FakeUsageCounters = {
   dailyTokens: number;
@@ -45,7 +40,6 @@ type FakeUsageLimits = {
 };
 
 type FakeUsageEvent = {
-  id: string;
   userId: string;
   jobId: string;
   jobRunId: string;
@@ -56,7 +50,7 @@ type FakeUsageEvent = {
   createdAt: string;
 };
 
-class FakePool {
+class FakeWorkerPersistenceRepository implements WorkerPersistenceRepository {
   readonly state: {
     jobRuns: FakeJobRun[];
     jobs: FakeJob[];
@@ -65,162 +59,127 @@ class FakePool {
     usageEvents: FakeUsageEvent[];
   };
 
-  constructor(state: FakePool["state"]) {
+  constructor(state: FakeWorkerPersistenceRepository["state"]) {
     this.state = state;
   }
 
-  async connect() {
+  async claimNextQueuedRun(): Promise<ClaimedRunRecord | null> {
+    const queuedRun = this.state.jobRuns
+      .filter((run) => run.status === "queued")
+      .sort((left, right) => left.startedAt.localeCompare(right.startedAt))[0];
+
+    if (!queuedRun) {
+      return null;
+    }
+
+    const job = this.state.jobs.find((candidate) => candidate.id === queuedRun.jobId);
+    if (!job) {
+      return null;
+    }
+
+    queuedRun.status = "running";
     return {
-      query: this.query.bind(this),
-      release() {
-        return;
-      }
+      runId: queuedRun.id,
+      job
     };
   }
 
-  async query(sql: string, params: unknown[] = []) {
-    const normalized = sql.replace(/\s+/g, " ").trim().toLowerCase();
-
-    if (normalized === "begin" || normalized === "commit" || normalized === "rollback") {
-      return { rows: [] };
+  async failRun(runId: string, errorMessage: string, completedAt?: string): Promise<void> {
+    const run = this.state.jobRuns.find((candidate) => candidate.id === runId);
+    if (!run) {
+      return;
     }
 
-    if (normalized.includes("from job_runs jr inner join jobs j")) {
-      const queuedRun = this.state.jobRuns
-        .filter((run) => run.status === "queued")
-        .sort((left, right) => left.startedAt.localeCompare(right.startedAt))[0];
+    run.status = "failed";
+    run.errorMessage = errorMessage;
+    run.completedAt = completedAt ?? new Date().toISOString();
+  }
 
-      if (!queuedRun) {
-        return { rows: [] };
-      }
+  async loadUsageState(userId: string): Promise<UsageStateRecord> {
+    const counters = this.state.usageCounters.get(userId);
+    const limits = this.state.usageLimits.get(userId);
 
-      const job = this.state.jobs.find((candidate) => candidate.id === queuedRun.jobId);
-      if (!job) {
-        return { rows: [] };
-      }
-
-      return {
-        rows: [
-          {
-            run_id: queuedRun.id,
-            job_id: job.id,
-            user_id: job.userId,
-            dag_id: job.dagId,
-            agent_definition_key: job.agentDefinitionKey,
-            job_name: job.name,
-            job_status: job.status,
-            input: job.inputs,
-            created_at: job.createdAt,
-            updated_at: job.updatedAt
-          }
-        ]
-      };
+    if (!counters || !limits) {
+      throw new Error("Usage state not found");
     }
 
-    if (normalized.startsWith("update job_runs set status = 'running'")) {
-      const run = this.state.jobRuns.find((candidate) => candidate.id === params[0]);
-      if (run) {
-        run.status = "running";
-      }
-      return { rows: [] };
+    return {
+      dailyUsed: counters.dailyTokens,
+      dailyLimit: limits.dailyTokenLimit,
+      monthlyUsed: counters.monthlyTokens,
+      monthlyLimit: limits.monthlyTokenLimit,
+      lastDailyReset: counters.lastDailyReset,
+      lastMonthlyReset: counters.lastMonthlyReset
+    };
+  }
+
+  async updateUsageState(userId: string, state: UsageStateRecord): Promise<void> {
+    const counters = this.state.usageCounters.get(userId);
+    if (!counters) {
+      return;
     }
 
-    if (normalized.includes("select c.daily_tokens as daily_used")) {
-      const userId = String(params[0]);
-      const counters = this.state.usageCounters.get(userId);
-      const limits = this.state.usageLimits.get(userId);
+    counters.dailyTokens = state.dailyUsed;
+    counters.monthlyTokens = state.monthlyUsed;
+    counters.lastDailyReset = state.lastDailyReset;
+    counters.lastMonthlyReset = state.lastMonthlyReset;
+  }
 
-      if (!counters || !limits) {
-        return { rows: [] };
-      }
+  async persistNodeExecutions(): Promise<void> {
+    return;
+  }
 
-      return {
-        rows: [
-          {
-            daily_used: counters.dailyTokens,
-            daily_limit: limits.dailyTokenLimit,
-            monthly_used: counters.monthlyTokens,
-            monthly_limit: limits.monthlyTokenLimit,
-            last_daily_reset: counters.lastDailyReset,
-            last_monthly_reset: counters.lastMonthlyReset
-          }
-        ]
-      };
+  async persistToolInvocations(): Promise<void> {
+    return;
+  }
+
+  async upsertJobMemories(): Promise<void> {
+    return;
+  }
+
+  async finalizeRun(record: FinalizeRunRecord): Promise<void> {
+    const run = this.state.jobRuns.find((candidate) => candidate.id === record.runId);
+    if (!run) {
+      return;
     }
 
-    if (normalized.startsWith("update user_usage_counters set daily_tokens = $2, monthly_tokens = $3")) {
-      const counters = this.state.usageCounters.get(String(params[0]));
+    if (record.usageEvents.length > 0) {
+      const counters = this.state.usageCounters.get(record.userId);
+      const totalTokens = record.usageEvents.reduce((sum, usageEvent) => sum + usageEvent.totalTokens, 0);
       if (counters) {
-        counters.dailyTokens = Number(params[1]);
-        counters.monthlyTokens = Number(params[2]);
-        counters.lastDailyReset = String(params[3]);
-        counters.lastMonthlyReset = String(params[4]);
+        counters.dailyTokens += totalTokens;
+        counters.monthlyTokens += totalTokens;
       }
-      return { rows: [] };
+
+      this.state.usageEvents.push(
+        ...record.usageEvents.map((usageEvent) => ({
+          userId: record.userId,
+          jobId: record.jobId,
+          jobRunId: record.runId,
+          model: usageEvent.model,
+          promptTokens: usageEvent.promptTokens,
+          completionTokens: usageEvent.completionTokens,
+          totalTokens: usageEvent.totalTokens,
+          createdAt: usageEvent.createdAt
+        }))
+      );
     }
 
-    if (normalized.startsWith("update user_usage_counters set daily_tokens = daily_tokens + $2")) {
-      const counters = this.state.usageCounters.get(String(params[0]));
-      if (counters) {
-        counters.dailyTokens += Number(params[1]);
-        counters.monthlyTokens += Number(params[1]);
-      }
-      return { rows: [] };
-    }
+    run.status = record.jobStatus;
+    run.completedAt = record.completedAt;
 
-    if (normalized.startsWith("insert into usage_events")) {
-      this.state.usageEvents.push({
-        id: String(params[0]),
-        userId: String(params[1]),
-        jobId: String(params[2]),
-        jobRunId: String(params[3]),
-        model: String(params[4]),
-        promptTokens: Number(params[5]),
-        completionTokens: Number(params[6]),
-        totalTokens: Number(params[7]),
-        createdAt: String(params[8])
-      });
-      return { rows: [] };
+    if (record.jobStatus === "succeeded") {
+      run.output = record.finalOutput;
+      run.errorMessage = null;
+    } else {
+      run.errorMessage = record.errorMessage;
     }
-
-    if (normalized.startsWith("insert into node_executions")) {
-      return { rows: [] };
-    }
-
-    if (normalized.startsWith("insert into tool_invocations")) {
-      return { rows: [] };
-    }
-
-    if (normalized.startsWith("insert into job_memories")) {
-      return { rows: [] };
-    }
-
-    if (normalized.startsWith("update job_runs set status = 'succeeded'")) {
-      const run = this.state.jobRuns.find((candidate) => candidate.id === params[0]);
-      if (run) {
-        run.status = "succeeded";
-        run.completedAt = String(params[1]);
-        run.output = JSON.parse(String(params[2]));
-        run.errorMessage = null;
-      }
-      return { rows: [] };
-    }
-
-    if (normalized.startsWith("update job_runs set status = 'failed'")) {
-      const run = this.state.jobRuns.find((candidate) => candidate.id === params[0]);
-      if (run) {
-        run.status = "failed";
-        run.errorMessage = String(params[1]);
-        run.completedAt = new Date().toISOString();
-      }
-      return { rows: [] };
-    }
-
-    throw new Error(`Unhandled SQL in fake pool: ${normalized}`);
   }
 }
 
-function createPoolState(overrides?: Partial<FakePool["state"]>): FakePool["state"] {
+function createRepositoryState(
+  overrides?: Partial<FakeWorkerPersistenceRepository["state"]>
+): FakeWorkerPersistenceRepository["state"] {
   return {
     jobRuns: [
       {
@@ -280,30 +239,31 @@ describe("queue-worker integration", () => {
   });
 
   it("rejects queued runs that are already over quota before execution", async () => {
-    const state = createPoolState({
-      usageCounters: new Map([
-        [
-          "user_1",
-          {
-            dailyTokens: 60000,
-            monthlyTokens: 1000,
-            lastDailyReset: "2026-05-02T00:00:00.000Z",
-            lastMonthlyReset: "2026-05-01T00:00:00.000Z"
-          }
-        ]
-      ])
-    });
-    const pool = new FakePool(state) as unknown as Pool;
+    const repository = new FakeWorkerPersistenceRepository(
+      createRepositoryState({
+        usageCounters: new Map([
+          [
+            "user_1",
+            {
+              dailyTokens: 60000,
+              monthlyTokens: 1000,
+              lastDailyReset: "2026-05-02T00:00:00.000Z",
+              lastMonthlyReset: "2026-05-01T00:00:00.000Z"
+            }
+          ]
+        ])
+      })
+    );
 
-    const didWork = await processNextQueuedRun(pool);
+    const didWork = await processNextQueuedRun(repository);
 
     expect(didWork).toBe(true);
     expect(runJobMock).not.toHaveBeenCalled();
-    expect(state.jobRuns[0]).toMatchObject({
+    expect(repository.state.jobRuns[0]).toMatchObject({
       status: "failed",
       errorMessage: "Quota exceeded"
     });
-    expect(state.usageEvents).toEqual([]);
+    expect(repository.state.usageEvents).toEqual([]);
   });
 
   it("records usage events and increments counters consistently after execution", async () => {
@@ -323,27 +283,28 @@ describe("queue-worker integration", () => {
       ]
     } as never);
 
-    const state = createPoolState({
-      usageCounters: new Map([
-        [
-          "user_1",
-          {
-            dailyTokens: 100,
-            monthlyTokens: 200,
-            lastDailyReset: "2026-05-02T00:00:00.000Z",
-            lastMonthlyReset: "2026-05-01T00:00:00.000Z"
-          }
-        ]
-      ])
-    });
-    const pool = new FakePool(state) as unknown as Pool;
+    const repository = new FakeWorkerPersistenceRepository(
+      createRepositoryState({
+        usageCounters: new Map([
+          [
+            "user_1",
+            {
+              dailyTokens: 100,
+              monthlyTokens: 200,
+              lastDailyReset: "2026-05-02T00:00:00.000Z",
+              lastMonthlyReset: "2026-05-01T00:00:00.000Z"
+            }
+          ]
+        ])
+      })
+    );
 
-    const didWork = await processNextQueuedRun(pool);
+    const didWork = await processNextQueuedRun(repository);
 
     expect(didWork).toBe(true);
-    expect(state.jobRuns[0]?.status).toBe("succeeded");
-    expect(state.usageEvents).toHaveLength(1);
-    expect(state.usageEvents[0]).toMatchObject({
+    expect(repository.state.jobRuns[0]?.status).toBe("succeeded");
+    expect(repository.state.usageEvents).toHaveLength(1);
+    expect(repository.state.usageEvents[0]).toMatchObject({
       userId: "user_1",
       jobId: "job_1",
       jobRunId: "run_1",
@@ -352,7 +313,7 @@ describe("queue-worker integration", () => {
       completionTokens: 40,
       totalTokens: 140
     });
-    expect(state.usageCounters.get("user_1")).toMatchObject({
+    expect(repository.state.usageCounters.get("user_1")).toMatchObject({
       dailyTokens: 240,
       monthlyTokens: 340
     });
@@ -375,41 +336,42 @@ describe("queue-worker integration", () => {
       ]
     } as never);
 
-    const state = createPoolState({
-      jobRuns: [
-        {
-          id: "run_1",
-          jobId: "job_1",
-          status: "queued",
-          startedAt: "2026-05-02T00:00:00.000Z"
-        },
-        {
-          id: "run_2",
-          jobId: "job_1",
-          status: "queued",
-          startedAt: "2026-05-02T00:00:01.000Z"
-        }
-      ],
-      usageCounters: new Map([
-        [
-          "user_1",
+    const repository = new FakeWorkerPersistenceRepository(
+      createRepositoryState({
+        jobRuns: [
           {
-            dailyTokens: 59900,
-            monthlyTokens: 1000,
-            lastDailyReset: "2026-05-02T00:00:00.000Z",
-            lastMonthlyReset: "2026-05-01T00:00:00.000Z"
+            id: "run_1",
+            jobId: "job_1",
+            status: "queued",
+            startedAt: "2026-05-02T00:00:00.000Z"
+          },
+          {
+            id: "run_2",
+            jobId: "job_1",
+            status: "queued",
+            startedAt: "2026-05-02T00:00:01.000Z"
           }
-        ]
-      ])
-    });
-    const pool = new FakePool(state) as unknown as Pool;
+        ],
+        usageCounters: new Map([
+          [
+            "user_1",
+            {
+              dailyTokens: 59900,
+              monthlyTokens: 1000,
+              lastDailyReset: "2026-05-02T00:00:00.000Z",
+              lastMonthlyReset: "2026-05-01T00:00:00.000Z"
+            }
+          ]
+        ])
+      })
+    );
 
-    expect(await processNextQueuedRun(pool)).toBe(true);
-    expect(await processNextQueuedRun(pool)).toBe(true);
+    expect(await processNextQueuedRun(repository)).toBe(true);
+    expect(await processNextQueuedRun(repository)).toBe(true);
 
     expect(runJobMock).toHaveBeenCalledTimes(1);
-    expect(state.jobRuns[0]).toMatchObject({ status: "succeeded" });
-    expect(state.jobRuns[1]).toMatchObject({
+    expect(repository.state.jobRuns[0]).toMatchObject({ status: "succeeded" });
+    expect(repository.state.jobRuns[1]).toMatchObject({
       status: "failed",
       errorMessage: "Quota exceeded"
     });

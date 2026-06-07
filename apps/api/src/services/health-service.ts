@@ -1,4 +1,5 @@
 import { PostgresDatabase, type DatabaseAdapter } from "../db/database.js";
+import { pquery } from "../db/pquery.js";
 
 export interface ReadinessStatus {
   ok: boolean;
@@ -21,7 +22,7 @@ export class HealthService {
     }
 
     try {
-      await (this.database as PostgresDatabase).pool.query("select 1");
+      await pquery((this.database as PostgresDatabase).pool, "select 1");
       return {
         ok: true,
         checks: {

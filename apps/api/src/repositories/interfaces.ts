@@ -64,6 +64,7 @@ export interface JobRepository {
   listByUser(userId: string): Promise<Job[]>;
   findById(jobId: string): Promise<Job | null>;
   create(job: Job): Promise<Job>;
+  createWithRelations(job: Job, schedule: JobSchedule, alertPreferences: AlertPreference[]): Promise<Job>;
 }
 
 export interface JobScheduleRepository {

@@ -26,7 +26,8 @@ describe("AlertsService", () => {
         }
       ]),
       findById: vi.fn(),
-      create: vi.fn()
+      create: vi.fn(),
+      createWithRelations: vi.fn()
     };
     const alertPreferenceRepository: AlertPreferenceRepository = {
       listByJobId: vi.fn(async () => [

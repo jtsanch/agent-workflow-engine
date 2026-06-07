@@ -37,7 +37,8 @@ function createRepositories(): {
     jobRepository: {
       listByUser: vi.fn(),
       findById: vi.fn(),
-      create: vi.fn()
+      create: vi.fn(),
+      createWithRelations: vi.fn()
     },
     jobRunRepository: {
       listByUser: vi.fn(),

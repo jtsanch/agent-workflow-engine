@@ -54,9 +54,7 @@ export class JobsService {
       updatedAt: now
     };
 
-    await this.jobRepository.create(job);
-
-    await this.jobScheduleRepository.create({
+    const schedule: JobSchedule = {
       id: createId("schedule"),
       jobId: job.id,
       scheduleExpression: input.scheduleExpression,
@@ -64,15 +62,15 @@ export class JobsService {
       enabled: true,
       createdAt: now,
       updatedAt: now
-    });
+    };
 
-    await this.alertPreferenceRepository.createMany(
-      input.alertPreferences.map((preference) => ({
+    const alertPreferences: AlertPreference[] = input.alertPreferences.map((preference) => ({
         id: createId("alert"),
         jobId: job.id,
         ...preference
-      }))
-    );
+      }));
+
+    await this.jobRepository.createWithRelations(job, schedule, alertPreferences);
 
     return job;
   }

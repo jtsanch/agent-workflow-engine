@@ -1,274 +1,195 @@
 # Architecture
 
-This document describes the current architecture of `personal-agent-os`, a config-driven personal agent platform built as a TypeScript monorepo.
+This repository is a TypeScript monorepo for a workflow platform with a clear split between control-plane behavior and asynchronous execution.
 
-The current system focuses on a first vertical slice:
+The durable system contract is:
 
-- listing available agent definitions
-- rendering config-driven job creation forms
-- creating jobs through a REST API
+- users authenticate in the web app
+- the API authorizes and persists control-plane state
+- the API queues execution requests as runs
+- the worker executes queued runs asynchronously
+- shared packages define the contracts used across all runtimes
+
+## Runtime Model
+
+### Web
+
+The web app is the authenticated control-plane client.
+
+It is responsible for:
+
+- session-aware navigation
+- rendering config-driven job creation experiences
 - listing jobs and runs
-- simulating a worker execution flow
+- presenting admin and usage views
 
-Future orchestration capabilities such as DAG execution, fan-out, scheduling, and distributed workflow coordination are intentionally out of scope for the current version.
+The web app is not the source of truth for business policy. It consumes API contracts.
 
----
+### API
 
-## 1. System Overview
+The API is the control-plane service.
 
-At a high level, the system consists of:
+It is responsible for:
 
-- **Web App** — renders agent definitions and config-driven job forms
-- **API Service** — exposes REST endpoints for agents, jobs, runs, and readiness checks
-- **Worker Service** — processes queued runs and simulates execution
-- **Shared Packages** — provide schemas, types, prompt helpers, SDK helpers, UI schema definitions, and observability utilities
-- **PostgreSQL** — stores jobs, runs, and run steps for local and production-like workflows
-- **Terraform Skeleton** — outlines AWS deployment infrastructure for future hosting
+- authentication and request authorization
+- input validation
+- job, run, usage, alert, and user orchestration
+- persistence coordination
+- read models needed by the UI
 
-The architecture separates frontend rendering, API coordination, worker execution, and shared domain definitions so each layer can evolve independently.
+The API owns synchronous request-response behavior. It does not own long-running execution.
 
----
+### Worker
 
-## 2. Monorepo Layout
+The worker is the asynchronous execution service.
 
-```txt
-apps/
-  web/        React + Vite frontend
-  api/        REST API service
-  worker/     background runner
+It is responsible for:
 
-packages/
-  shared/           domain types, Zod schemas, prompt helpers
-  agent-sdk/        agent and tool registration helpers
-  ui-schema/        config-driven form schema
-  observability/    logger and metrics utilities
+- claiming queued runs
+- executing workflow DAGs
+- persisting execution telemetry and outputs
+- enforcing execution-time usage limits
 
-infra/
-  terraform/        AWS skeleton modules and dev environment
-```
+The worker is the execution-plane owner.
 
-## 3. Core Concepts
+### Shared Packages
 
-### Agent Definitions
+Shared packages provide the contracts that keep runtimes aligned:
 
-Agents are defined through configuration rather than hardcoded UI or workflow logic.
+- domain types and validation schemas
+- agent definitions and tool definitions
+- UI schema contracts
+- observability interfaces
 
-An agent definition describes:
+Shared packages are the preferred location for cross-runtime concepts.
 
-- the agent identifier
-- supported inputs
-- form schema
-- execution-related metadata
+## Core Domain Contracts
 
-The web app uses these definitions to render job creation forms dynamically.
+### Agent Definition
 
-### Jobs
+An agent definition is a configuration-owned workflow template.
 
-A job represents a user-created request for an agent to perform work.
+It defines:
 
-The API validates job input, stores the job, and exposes endpoints for listing and retrieving jobs.
+- a stable identifier
+- input contract
+- UI schema
+- DAG definition
 
-Current job flow:
+The UI and execution layers both depend on the same definition contract.
 
-Web form → POST /jobs → API validation → repository → database
+### Job
 
-### Runs
+A job is the control-plane object users create and own.
 
-A run represents an execution attempt for a job.
+A job binds:
 
-The current system supports two execution paths:
+- an agent definition
+- validated input
+- scheduling intent
+- alerting intent
+- user ownership
 
-- Simulated execution
-  POST /runs/simulate
-  useful for validating the end-to-end flow without a real worker pipeline
-- Queued execution
-  POST /runs
-  stores a queued run for worker processing
+Jobs are durable records and may be executed multiple times.
 
-### Run Steps
+### Run
 
-Run steps record the stages of a run.
+A run is a single execution attempt for a job.
 
-They provide a basic execution history and create the foundation for future observability and debugging.
+The durable production contract is:
 
-## 4. API Architecture
+- the API creates queued runs
+- the worker executes queued runs asynchronously
+- run state and execution telemetry are persisted for later inspection
 
-The API follows a layered structure:
+### Usage and Access
 
-controller → service → repository → database
+Access control and usage limits are first-class platform concerns.
 
-### Controllers
+The system contract includes:
 
-Controllers handle:
+- authenticated access
+- local platform users
+- user approval state
+- role-based admin access
+- usage summaries and audit events
 
-- HTTP routing
-- request validation
-- response shaping
-- mapping errors to HTTP responses
+## Architectural Boundaries
 
-### Services
+### Control Plane vs Execution Plane
 
-Services contain application logic, including:
+This is the most important boundary in the repository.
 
-- creating jobs
-- creating runs
-- coordinating simulated execution
-- enforcing workflow-level rules
+- control plane: web and API
+- execution plane: worker
 
-### Repositories
+The control plane defines, validates, and schedules work.
+The execution plane performs work and records runtime telemetry.
 
-Repositories isolate persistence logic from application logic.
+### Layering Inside the API
 
-This keeps database access separate from request handling and makes the system easier to test.
+The API follows a stable layered boundary:
 
-## 5. Web Architecture
+- controllers own HTTP concerns
+- services own application orchestration and policy
+- repositories own persistence access
+- database schema and migrations define storage contracts
 
-The web app is built around config-driven rendering.
+This boundary keeps request handling separate from persistence details.
 
-Instead of hardcoding a form for each agent, the frontend reads agent definitions and UI schemas to render forms dynamically.
+### Workflow Execution
 
-Current frontend capabilities include:
+Workflow execution is DAG-based.
 
-- listing available agents
-- rendering a Create Job form from schema
-- submitting jobs to the API
-- listing jobs and runs
+The durable execution contract is:
 
-This keeps the frontend flexible as new agent definitions are added.
+- dependencies are derived from node input bindings
+- execution state is runtime-scoped per run
+- node outputs are retained for observability
+- retries are part of workflow execution semantics
 
-## 6. Worker Architecture
+This repository treats execution as deterministic workflow processing rather than ad hoc background jobs.
 
-The worker is responsible for background run processing.
+## Data Contracts
 
-In the current version, the worker supports a simple queued execution model:
+PostgreSQL is the system of record for:
 
-POST /runs → queued run → worker polls → run steps recorded
-
-This is intentionally simpler than a full orchestration engine.
-
-The goal is to validate the basic execution lifecycle before introducing more advanced scheduling or DAG-based execution.
-
-## 7. Data Model
-
-The current data model centers around:
-
-- agents
+- users and access state
 - jobs
 - runs
-- run steps
+- usage tracking
+- execution telemetry
+- workflow-related operational data
 
-### Jobs
+Database migrations are explicit and are not coupled to API startup.
 
-Jobs store the user request and validated input for an agent.
+## Frontend Contract
 
-### Runs
+The frontend is config-driven where user input is agent-specific.
 
-Runs track execution attempts for a job.
+That means:
 
-A job may eventually have multiple runs, though the current vertical slice focuses on basic creation and listing.
+- job creation is driven from shared agent/UI contracts
+- route pages orchestrate API calls and screen state
+- reusable components remain presentation-focused
 
-### Run Steps
+The frontend should reflect backend policy, not re-implement it.
 
-Run steps provide structured execution history for a run.
+## What Is Intentionally Stable
 
-This creates a foundation for future execution tracing and observability.
+- monorepo split between `apps/*`, `packages/*`, and `infra/*`
+- authenticated control-plane UI
+- API as control-plane owner
+- worker as asynchronous execution owner
+- shared contracts across runtimes
+- PostgreSQL-backed durable state
+- explicit migrations
+- config-driven workflow definitions
 
-## 8. Execution Flow
+## What Is Intentionally Not a Repo Contract
 
-### Simulated Run Flow
-
-1. User creates a job
-2. API validates and stores the job
-3. User triggers a simulated run
-4. API creates run and step records
-5. UI lists the resulting run history
-
-This path is useful for validating the product flow without requiring real agent execution.
-
-### Worker Run Flow
-
-1. User creates a job
-2. API queues a run
-3. Worker polls for queued runs
-4. Worker processes the run
-5. Worker records run steps and status updates
-
-This path is the basis for future background execution.
-
-## 9. Current Design Decisions
-
-### Config-driven UI
-
-Agent forms are generated from schema definitions.
-
-This avoids hardcoding frontend forms and makes it easier to add new agent types.
-
-### Shared domain schemas
-
-Types and Zod schemas live in shared packages.
-
-This keeps API validation, frontend form rendering, and worker logic aligned around the same contracts.
-
-### Separate API and worker services
-
-The API handles request/response flows, while the worker handles background execution.
-
-This creates a clean boundary between synchronous user actions and asynchronous processing.
-
-### Migrations are explicit
-
-Database migrations are intentionally run as a separate step from API startup.
-
-This avoids unsafe behavior when multiple API containers start in parallel.
-
-### AWS infrastructure is skeletal
-
-Terraform exists to define the intended deployment shape, but the current priority is validating the local vertical slice before fully productionizing infrastructure.
-
-## 10. Out of Scope for Current Version
-
-The following are intentionally not part of the current implementation:
-
-- OAuth and user authentication
-- tenant isolation
-- production usage limits
-- real LLM provider integration
-- notification providers
-- EventBridge-based scheduling
-- DAG execution
-- fan-out / aggregation execution
-- persistent workflow checkpoints
-- distributed orchestration
-- DAG editing UI
-
-These are future layers, not current assumptions.
-
-## 11. Future Direction
-
-The current architecture is designed to support future growth into a more capable agent workflow platform.
-
-Likely next steps include:
-
-- adding authentication and per-user access control
-- adding token or usage limits per user
-- wiring real LLM and notification providers
-- improving observability and metrics
-- adding scheduled job execution
-- evolving simple worker runs toward richer workflow execution
-
-The system is intentionally starting with a narrow vertical slice before adding orchestration complexity.
-
-## Summary
-
-personal-agent-os currently provides a config-driven foundation for creating and running personal agent jobs.
-
-The system demonstrates:
-
-- config-driven form rendering
-- REST-based job and run management
-- API / worker separation
-- shared schemas across packages
-- database-backed execution state
-- a clear path toward more advanced orchestration
-
-The current focus is not a full DAG engine yet. It is a disciplined first slice that validates the platform shape before adding more complex execution models.
+- temporary compatibility paths
+- local-only shortcuts
+- incidental naming left over from earlier slices
+- exact internal execution heuristics
+- specific future cloud rollout details beyond the current deployment shape

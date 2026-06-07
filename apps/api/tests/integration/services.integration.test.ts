@@ -39,15 +39,14 @@ describe("service integration", () => {
     const job = await context.jobsService.createJob(createJobInput, userContext);
     const alerts = await context.alertsService.listAlerts(userContext);
     const queuedRun = await context.runsService.enqueueRun(userContext, job.id);
-    const completedRun = await context.runsService.executeRun(userContext, job.id);
     const runs = await context.runsService.listRuns(userContext);
     const readiness = await context.healthService.getReadiness();
 
     expect(alerts).toHaveLength(1);
     expect(queuedRun.status).toBe("queued");
-    expect(completedRun.status).toBe("succeeded");
-    expect(runs).toHaveLength(2);
-    expect(runs.some((run) => run.nodeExecutions.length > 0)).toBe(true);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.id).toBe(queuedRun.id);
+    expect(runs[0]?.nodeExecutions).toEqual([]);
     expect(runs.every((run) => run.toolInvocations.length === 0)).toBe(true);
     expect(readiness).toEqual({
       ok: true,

@@ -1,8 +1,5 @@
-import { createLlmBudget } from "@personal-agent-os/agent-sdk";
-import type { RunContext } from "@personal-agent-os/agent-sdk";
 import type { JobRun, NodeExecution, NodeFeedback, ToolInvocation, UserContext } from "@personal-agent-os/shared";
 import type {
-  JobMemoryRepository,
   JobRepository,
   JobRunRepository,
   NodeExecutionRepository,
@@ -11,10 +8,6 @@ import type {
 } from "../repositories/interfaces.js";
 import { createId } from "../common/ids.js";
 import { AppError } from "../common/errors.js";
-import { AgentCatalogService } from "./agent-catalog.js";
-import { createDefaultToolRegistry } from "../worker-compat/tool-registry.js";
-import { executeDagCompat } from "../worker-compat/dag-engine.js";
-import { asJsonValue } from "../repositories/sql-helpers.js";
 
 export type HydratedRun = JobRun & {
   toolInvocations: ToolInvocation[];
@@ -28,9 +21,7 @@ export class RunsService {
     private readonly jobRunRepository: JobRunRepository,
     private readonly toolInvocationRepository: ToolInvocationRepository,
     private readonly nodeExecutionRepository: NodeExecutionRepository,
-    private readonly nodeFeedbackRepository: NodeFeedbackRepository,
-    private readonly jobMemoryRepository: JobMemoryRepository,
-    private readonly agentCatalogService: AgentCatalogService
+    private readonly nodeFeedbackRepository: NodeFeedbackRepository
   ) {}
 
   async listRuns(userContext: UserContext): Promise<HydratedRun[]> {
@@ -99,81 +90,6 @@ export class RunsService {
     };
 
     return this.jobRunRepository.create(run);
-  }
-
-  async executeRun(userContext: UserContext, jobId: string): Promise<JobRun> {
-    const job = await this.jobRepository.findById(jobId);
-    if (!job) {
-      throw new AppError(`Unknown job: ${jobId}`, 404, "job_not_found");
-    }
-    if (job.userId !== userContext.userId) {
-      throw new AppError(`Unknown job: ${jobId}`, 404, "job_not_found");
-    }
-
-    const agentDefinition = this.agentCatalogService.getByDagId(job.dagId) ??
-      (job.agentDefinitionKey ? this.agentCatalogService.getByKey(job.agentDefinitionKey) : null);
-    if (!agentDefinition) {
-      throw new AppError(`Unknown workflow definition for dag: ${job.dagId}`, 404, "agent_not_found");
-    }
-
-    const now = new Date().toISOString();
-    const run: JobRun = {
-      id: createId("run"),
-      jobId: job.id,
-      status: "queued",
-      triggerSource: "manual",
-      startedAt: now
-    };
-    await this.jobRunRepository.create(run);
-
-    const context: RunContext = {
-      registry: createDefaultToolRegistry(),
-      now: () => new Date().toISOString(),
-      logger: { info: () => undefined },
-      llmBudget: createLlmBudget()
-    };
-    const result = await executeDagCompat(
-      agentDefinition.dag,
-      job.inputs,
-      createDefaultToolRegistry(),
-      context
-    );
-    const nodeExecutions: NodeExecution[] =
-      "nodeExecutions" in result && Array.isArray(result.nodeExecutions) ? result.nodeExecutions : [];
-    const nodeFeedback: NodeFeedback[] =
-      "nodeFeedback" in result && Array.isArray(result.nodeFeedback) ? result.nodeFeedback : [];
-    const toolInvocations: ToolInvocation[] =
-      "toolInvocations" in result && Array.isArray(result.toolInvocations) ? result.toolInvocations : [];
-
-    const completedAt = new Date().toISOString();
-    await this.toolInvocationRepository.createMany(toolInvocations);
-    await this.nodeExecutionRepository.createMany(
-      nodeExecutions.map((execution: NodeExecution) => ({
-        ...execution,
-        jobRunId: run.id
-      }))
-    );
-    await this.nodeFeedbackRepository.createMany(nodeFeedback);
-    await this.jobMemoryRepository.upsert({
-      id: createId("memory"),
-      jobId: job.id,
-      key: "latest-output",
-      value: asJsonValue(result.finalOutput),
-      updatedAt: completedAt
-    });
-
-    const completedRun: JobRun = {
-      ...run,
-      status: "succeeded",
-      completedAt,
-      output:
-        result.finalOutput && typeof result.finalOutput === "object" && "data" in (result.finalOutput as Record<string, unknown>)
-          ? result.finalOutput as JobRun["output"]
-          : { data: result.finalOutput, artifacts: [] }
-    };
-
-    await this.jobRunRepository.update(completedRun);
-    return completedRun;
   }
 }
 

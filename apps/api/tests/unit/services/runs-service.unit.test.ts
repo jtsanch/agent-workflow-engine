@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Job, JobRun, NodeExecution, NodeFeedback, UserContext } from "@personal-agent-os/shared";
+import type { Job, JobRun, NodeExecution, NodeFeedback, ToolInvocation, UserContext } from "@personal-agent-os/shared";
 import type {
-  JobMemoryRepository,
   JobRepository,
   JobRunRepository,
   NodeExecutionRepository,
@@ -9,21 +8,6 @@ import type {
   ToolInvocationRepository
 } from "../../../src/repositories/interfaces.js";
 import { RunsService } from "../../../src/services/runs-service.js";
-import type { AgentCatalogService } from "../../../src/services/agent-catalog.js";
-
-vi.mock("@personal-agent-os/agent-sdk", () => ({
-  createLlmBudget: vi.fn(() => ({}))
-}));
-
-vi.mock("../../../src/worker-compat/tool-registry.js", () => ({
-  createDefaultToolRegistry: vi.fn(() => ({}))
-}));
-
-vi.mock("../../../src/worker-compat/dag-engine.js", () => ({
-  executeDagCompat: vi.fn()
-}));
-
-import { executeDagCompat } from "../../../src/worker-compat/dag-engine.js";
 
 const userContext: UserContext = {
   userId: "user_test",
@@ -38,8 +22,8 @@ const job: Job = {
   agentDefinitionKey: "grocery-planner",
   status: "active",
   inputs: { preferences: { days: 7 } },
-  createdAt: "2026-05-10T00:00:00.000Z",
-  updatedAt: "2026-05-10T00:00:00.000Z"
+  createdAt: "2026-06-07T00:00:00.000Z",
+  updatedAt: "2026-06-07T00:00:00.000Z"
 };
 
 function createRepositories(): {
@@ -48,13 +32,13 @@ function createRepositories(): {
   toolInvocationRepository: ToolInvocationRepository;
   nodeExecutionRepository: NodeExecutionRepository;
   nodeFeedbackRepository: NodeFeedbackRepository;
-  jobMemoryRepository: JobMemoryRepository;
 } {
   return {
     jobRepository: {
       listByUser: vi.fn(),
       findById: vi.fn(),
-      create: vi.fn()
+      create: vi.fn(),
+      createWithRelations: vi.fn()
     },
     jobRunRepository: {
       listByUser: vi.fn(),
@@ -75,20 +59,8 @@ function createRepositories(): {
       listByRunId: vi.fn(),
       listByExecutionIds: vi.fn(),
       createMany: vi.fn()
-    },
-    jobMemoryRepository: {
-      listByJobId: vi.fn(),
-      upsert: vi.fn()
     }
   };
-}
-
-function createAgentCatalogService(): AgentCatalogService {
-  return {
-    list: vi.fn(),
-    getByKey: vi.fn(() => null),
-    getByDagId: vi.fn(() => ({ dag: { id: "dag_grocery_planner" } }))
-  } as unknown as AgentCatalogService;
 }
 
 beforeEach(() => {
@@ -96,13 +68,41 @@ beforeEach(() => {
 });
 
 describe("RunsService", () => {
-  it("enqueues and executes runs for an existing job", async () => {
+  it("enqueues a queued manual run for an owned job", async () => {
     const repositories = createRepositories();
-    const agentCatalogService = createAgentCatalogService();
-    const createdRuns: JobRun[] = [];
-    const executionBase: NodeExecution = {
+    vi.mocked(repositories.jobRepository.findById).mockResolvedValue(job);
+    vi.mocked(repositories.jobRunRepository.create).mockImplementation(async (run) => run);
+    const runsService = new RunsService(
+      repositories.jobRepository,
+      repositories.jobRunRepository,
+      repositories.toolInvocationRepository,
+      repositories.nodeExecutionRepository,
+      repositories.nodeFeedbackRepository
+    );
+
+    const queuedRun = await runsService.enqueueRun(userContext, job.id);
+
+    expect(queuedRun.jobId).toBe(job.id);
+    expect(queuedRun.status).toBe("queued");
+    expect(queuedRun.triggerSource).toBe("manual");
+    expect(repositories.jobRepository.findById).toHaveBeenCalledWith(job.id);
+    expect(repositories.jobRunRepository.create).toHaveBeenCalledOnce();
+  });
+
+  it("hydrates run reads with executions, feedback, and tool invocations", async () => {
+    const repositories = createRepositories();
+    const run: JobRun = {
+      id: "run_1",
+      jobId: job.id,
+      status: "succeeded",
+      triggerSource: "manual",
+      startedAt: "2026-06-07T00:00:00.000Z",
+      completedAt: "2026-06-07T00:00:05.000Z",
+      output: { data: { ok: true }, artifacts: [] }
+    };
+    const nodeExecution: NodeExecution = {
       id: "exec_1",
-      jobRunId: "pending",
+      jobRunId: run.id,
       nodeId: "node_1",
       nodeType: "tool",
       nodeVersion: "1.0.0",
@@ -113,74 +113,47 @@ describe("RunsService", () => {
       latencyMs: 10,
       tokenUsage: 0,
       retryCount: 0,
-      startedAt: "2026-05-10T00:00:00.000Z",
-      completedAt: "2026-05-10T00:00:01.000Z"
+      startedAt: "2026-06-07T00:00:01.000Z",
+      completedAt: "2026-06-07T00:00:02.000Z"
     };
     const nodeFeedback: NodeFeedback = {
       id: "feedback_1",
-      nodeExecutionId: "exec_1",
+      nodeExecutionId: nodeExecution.id,
       sourceNodeId: "node_1",
       targetNodeId: "node_2",
       score: 0.9,
       shouldRetry: false,
       summary: "looks good",
-      createdAt: "2026-05-10T00:00:01.000Z"
+      createdAt: "2026-06-07T00:00:02.000Z"
     };
-    vi.mocked(repositories.jobRepository.findById).mockResolvedValue(job);
-    vi.mocked(repositories.jobRunRepository.create).mockImplementation(async (run) => {
-      createdRuns.push(run);
-      return run;
-    });
-    vi.mocked(repositories.jobRunRepository.update).mockImplementation(async (run) => {
-      const index = createdRuns.findIndex((entry) => entry.id === run.id);
-      if (index >= 0) {
-        createdRuns[index] = run;
-      }
-      return run;
-    });
-    vi.mocked(repositories.jobRunRepository.listByUser).mockImplementation(async () => [...createdRuns]);
-    vi.mocked(repositories.toolInvocationRepository.createMany).mockImplementation(async (records) => records);
-    vi.mocked(repositories.nodeExecutionRepository.createMany).mockImplementation(async (records) => records);
-    vi.mocked(repositories.nodeFeedbackRepository.createMany).mockImplementation(async (records) => records);
-    vi.mocked(repositories.jobMemoryRepository.upsert).mockImplementation(async (record) => record);
-    vi.mocked(executeDagCompat).mockResolvedValue({
-      finalOutput: { data: { done: true }, artifacts: [] },
-      nodeExecutions: [executionBase],
-      nodeFeedback: [nodeFeedback],
-      memoryWrites: [],
-      toolInvocations: []
-    });
+    const toolInvocation: ToolInvocation = {
+      id: "tool_1",
+      nodeExecutionId: nodeExecution.id,
+      toolName: "web_search.search",
+      request: { query: "milk" },
+      response: { results: [] },
+      status: "succeeded",
+      createdAt: "2026-06-07T00:00:02.000Z"
+    };
+    vi.mocked(repositories.jobRunRepository.listByUser).mockResolvedValue([run]);
+    vi.mocked(repositories.nodeExecutionRepository.listByRunIds).mockResolvedValue([nodeExecution]);
+    vi.mocked(repositories.nodeFeedbackRepository.listByExecutionIds).mockResolvedValue([nodeFeedback]);
+    vi.mocked(repositories.toolInvocationRepository.listByExecutionIds).mockResolvedValue([toolInvocation]);
     const runsService = new RunsService(
       repositories.jobRepository,
       repositories.jobRunRepository,
       repositories.toolInvocationRepository,
       repositories.nodeExecutionRepository,
-      repositories.nodeFeedbackRepository,
-      repositories.jobMemoryRepository,
-      agentCatalogService
+      repositories.nodeFeedbackRepository
     );
 
-    const queuedRun = await runsService.enqueueRun(userContext, job.id);
-    const completedRun = await runsService.executeRun(userContext, job.id);
-    vi.mocked(repositories.nodeExecutionRepository.listByRunIds).mockResolvedValue([
-      {
-        ...executionBase,
-        jobRunId: completedRun.id
-      }
-    ]);
-    vi.mocked(repositories.nodeFeedbackRepository.listByExecutionIds).mockResolvedValue([nodeFeedback]);
-    vi.mocked(repositories.toolInvocationRepository.listByExecutionIds).mockResolvedValue([]);
     const runs = await runsService.listRuns(userContext);
+    const hydratedRun = runs[0];
 
-    expect(queuedRun.status).toBe("queued");
-    expect(completedRun.status).toBe("succeeded");
-    expect(completedRun.output?.data).toBeDefined();
-    expect(runs).toHaveLength(2);
-    expect(runs.some((run) => run.nodeExecutions.length > 0)).toBe(true);
-    expect(runs.every((run) => run.toolInvocations.length === 0)).toBe(true);
-    expect(repositories.jobRepository.findById).toHaveBeenCalledWith(job.id);
-    expect(repositories.jobRunRepository.create).toHaveBeenCalledTimes(2);
-    expect(repositories.jobRunRepository.update).toHaveBeenCalledOnce();
+    expect(runs).toHaveLength(1);
+    expect(hydratedRun?.nodeExecutions).toEqual([nodeExecution]);
+    expect(hydratedRun?.nodeFeedback).toEqual([nodeFeedback]);
+    expect(hydratedRun?.toolInvocations).toEqual([toolInvocation]);
   });
 
   it("throws when enqueueing an unknown job", async () => {
@@ -191,9 +164,7 @@ describe("RunsService", () => {
       repositories.jobRunRepository,
       repositories.toolInvocationRepository,
       repositories.nodeExecutionRepository,
-      repositories.nodeFeedbackRepository,
-      repositories.jobMemoryRepository,
-      createAgentCatalogService()
+      repositories.nodeFeedbackRepository
     );
 
     await expect(runsService.enqueueRun(userContext, "missing")).rejects.toMatchObject({
@@ -202,7 +173,7 @@ describe("RunsService", () => {
     });
   });
 
-  it("rejects run access for a job owned by another user", async () => {
+  it("rejects queueing a job owned by another user", async () => {
     const repositories = createRepositories();
     vi.mocked(repositories.jobRepository.findById).mockResolvedValue({
       ...job,
@@ -213,12 +184,10 @@ describe("RunsService", () => {
       repositories.jobRunRepository,
       repositories.toolInvocationRepository,
       repositories.nodeExecutionRepository,
-      repositories.nodeFeedbackRepository,
-      repositories.jobMemoryRepository,
-      createAgentCatalogService()
+      repositories.nodeFeedbackRepository
     );
 
-    await expect(runsService.executeRun(userContext, job.id)).rejects.toMatchObject({
+    await expect(runsService.enqueueRun(userContext, job.id)).rejects.toMatchObject({
       code: "job_not_found",
       statusCode: 404
     });

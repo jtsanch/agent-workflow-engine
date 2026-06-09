@@ -43,7 +43,8 @@ describe("JobsService", () => {
       jobRepository: {
         listByUser: vi.fn(),
         findById: vi.fn(),
-        create: vi.fn()
+        create: vi.fn(),
+        createWithRelations: vi.fn()
       },
       jobScheduleRepository: {
         findByJobId: vi.fn(),
@@ -74,7 +75,7 @@ describe("JobsService", () => {
   it("creates a job with schedule and alert preferences", async () => {
     const { jobRepository, jobScheduleRepository, alertPreferenceRepository } = createRepositories();
     const agentCatalogService = createAgentCatalogService();
-    vi.mocked(jobRepository.create).mockImplementation(async (job) => job);
+    vi.mocked(jobRepository.createWithRelations).mockImplementation(async (job) => job);
     vi.mocked(jobScheduleRepository.create).mockImplementation(async (schedule) => schedule);
     vi.mocked(alertPreferenceRepository.createMany).mockImplementation(async (preferences) => preferences);
     const jobsService = new JobsService(
@@ -112,14 +113,15 @@ describe("JobsService", () => {
     expect(jobs[0]?.schedule?.scheduleExpression).toBe(createJobInput.scheduleExpression);
     expect(jobs[0]?.alertPreferences).toHaveLength(1);
     expect(jobs[0]?.inputs.preferences).toMatchObject({ days: 7, servings: 2, budgetUsd: 100 });
-    expect(jobRepository.create).toHaveBeenCalledOnce();
-    expect(jobScheduleRepository.create).toHaveBeenCalledWith(
+    expect(jobRepository.createWithRelations).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: job.id,
+        agentDefinitionKey: "grocery-planner"
+      }),
       expect.objectContaining({
         jobId: job.id,
         scheduleExpression: createJobInput.scheduleExpression
-      })
-    );
-    expect(alertPreferenceRepository.createMany).toHaveBeenCalledWith(
+      }),
       expect.arrayContaining([expect.objectContaining({ jobId: job.id })])
     );
   });

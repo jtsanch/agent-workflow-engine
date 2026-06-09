@@ -4,7 +4,6 @@ import { createSeedTables } from "./db/seed.js";
 import { InMemoryDatabase, PostgresDatabase } from "./db/database.js";
 import {
   InMemoryAlertPreferenceRepository,
-  InMemoryJobMemoryRepository,
   InMemoryJobRepository,
   InMemoryJobRunRepository,
   InMemoryJobRunStepRepository,
@@ -15,7 +14,6 @@ import {
 } from "./repositories/memory.js";
 import {
   PostgresAlertPreferenceRepository,
-  PostgresJobMemoryRepository,
   PostgresJobRepository,
   PostgresJobRunRepository,
   PostgresJobRunStepRepository,
@@ -92,10 +90,6 @@ export function createAppContext(config: AppConfig): AppContext {
     database.kind === "postgres"
       ? new PostgresNodeFeedbackRepository(database)
       : new InMemoryNodeFeedbackRepository(database);
-  const jobMemoryRepository =
-    database.kind === "postgres"
-      ? new PostgresJobMemoryRepository(database)
-      : new InMemoryJobMemoryRepository(database);
   const userRepository = database.kind === "postgres" ? new PostgresUserRepository(database) : null;
   const userUsageRepository = database.kind === "postgres" ? new PostgresUserUsageRepository(database) : null;
   const userService = userRepository ? new UserService(userRepository) : null;
@@ -117,9 +111,7 @@ export function createAppContext(config: AppConfig): AppContext {
     jobRunRepository,
     toolInvocationRepository,
     nodeExecutionRepository,
-    nodeFeedbackRepository,
-    jobMemoryRepository,
-    agentCatalogService
+    nodeFeedbackRepository
   );
   const alertsService = new AlertsService(jobRepository, alertPreferenceRepository);
   const healthService = new HealthService(database);

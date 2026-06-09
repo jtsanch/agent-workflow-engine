@@ -15,6 +15,7 @@
     "dev": "turbo run dev --parallel --filter=@personal-agent-os/api --filter=@personal-agent-os/worker --filter=@personal-agent-os/web",
     "lint": "turbo run lint",
     "lint:services": "turbo run lint --filter=@personal-agent-os/api --filter=@personal-agent-os/worker",
+    "ci": "pnpm run lint:services && pnpm run test:coverage:services && pnpm run build",
     "test": "turbo run test",
     "test:unit": "turbo run test:unit",
     "test:integration": "turbo run test:integration",

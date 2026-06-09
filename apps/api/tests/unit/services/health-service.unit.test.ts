@@ -28,7 +28,7 @@ describe("HealthService", () => {
         database: "ok"
       }
     });
-    expect(query).toHaveBeenCalledWith("select 1");
+    expect(query).toHaveBeenCalledWith("select 1", []);
   });
 
   it("reports postgres readiness as degraded when the query fails", async () => {

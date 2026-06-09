@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Pool } from "pg";
 import { loadConfig } from "../config/config.js";
+import { pquery } from "./pquery.js";
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url));
 const migrationsDirectory = join(currentDirectory, "migrations");
@@ -12,7 +13,7 @@ export async function runMigrations(databaseUrl: string): Promise<void> {
   const pool = new Pool({ connectionString: databaseUrl });
 
   try {
-    await pool.query(`
+    await pquery(pool, `
       create table if not exists schema_migrations (
         version text primary key,
         applied_at timestamptz not null default now()
@@ -21,20 +22,23 @@ export async function runMigrations(databaseUrl: string): Promise<void> {
 
     const files = (await readdir(migrationsDirectory)).filter((file) => file.endsWith(".sql")).sort();
     for (const file of files) {
-      const alreadyApplied = await pool.query("select 1 from schema_migrations where version = $1", [file]);
+      const alreadyApplied = await pquery(pool, "select 1 from schema_migrations where version = $1", [file]);
       if (alreadyApplied.rowCount) {
         continue;
       }
 
       const sql = await readFile(join(migrationsDirectory, file), "utf8");
-      await pool.query("begin");
+      const client = await pool.connect();
       try {
-        await pool.query(sql);
-        await pool.query("insert into schema_migrations (version) values ($1)", [file]);
-        await pool.query("commit");
+        await pquery(client, "begin");
+        await pquery(client, sql);
+        await pquery(client, "insert into schema_migrations (version) values ($1)", [file]);
+        await pquery(client, "commit");
       } catch (error) {
-        await pool.query("rollback");
+        await pquery(client, "rollback");
         throw error;
+      } finally {
+        client.release();
       }
     }
   } finally {

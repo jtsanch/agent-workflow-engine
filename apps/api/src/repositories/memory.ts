@@ -39,6 +39,13 @@ export class InMemoryJobRepository implements JobRepository {
     this.db.tables.jobs.push(job);
     return job;
   }
+
+  async createWithRelations(job: Job, schedule: JobSchedule, alertPreferences: AlertPreference[]): Promise<Job> {
+    this.db.tables.jobs.push(job);
+    this.db.tables.schedules.push(schedule);
+    this.db.tables.alertPreferences.push(...alertPreferences);
+    return job;
+  }
 }
 
 export class InMemoryJobScheduleRepository implements JobScheduleRepository {

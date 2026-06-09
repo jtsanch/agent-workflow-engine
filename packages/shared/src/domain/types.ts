@@ -251,7 +251,7 @@ export type CompiledDAG = {
 
 export interface AlertPreference {
   id: string;
-  jobId?: EntityId;
+  jobId: EntityId;
   channel: AlertChannel;
   destination: string;
   onSuccess: boolean;

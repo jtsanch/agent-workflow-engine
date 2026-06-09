@@ -228,7 +228,7 @@ export class PostgresWorkerPersistenceRepository implements WorkerPersistenceRep
           do update set value = excluded.value, updated_at = excluded.updated_at
         `,
         [
-          `memory_${Math.random().toString(36).slice(2, 10)}`,
+          randomUUID(),
           jobId,
           memoryWrite.key,
           JSON.stringify(

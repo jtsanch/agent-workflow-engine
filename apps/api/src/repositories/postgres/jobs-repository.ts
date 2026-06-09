@@ -73,7 +73,7 @@ export class PostgresJobRepository extends BaseRepository implements JobReposito
           await tx.insert(jobAlertPreferencesTable).values(
             alertPreferences.map((preference) => ({
               id: preference.id,
-              jobId: preference.jobId ?? "",
+              jobId: preference.jobId,
               channel: preference.channel,
               destination: preference.destination,
               onSuccess: preference.onSuccess,

@@ -28,14 +28,17 @@ export async function runMigrations(databaseUrl: string): Promise<void> {
       }
 
       const sql = await readFile(join(migrationsDirectory, file), "utf8");
-      await pquery(pool, "begin");
+      const client = await pool.connect();
       try {
-        await pquery(pool, sql);
-        await pquery(pool, "insert into schema_migrations (version) values ($1)", [file]);
-        await pquery(pool, "commit");
+        await pquery(client, "begin");
+        await pquery(client, sql);
+        await pquery(client, "insert into schema_migrations (version) values ($1)", [file]);
+        await pquery(client, "commit");
       } catch (error) {
-        await pquery(pool, "rollback");
+        await pquery(client, "rollback");
         throw error;
+      } finally {
+        client.release();
       }
     }
   } finally {

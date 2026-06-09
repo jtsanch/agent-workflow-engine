@@ -45,7 +45,7 @@ export function mapJobSchedule(row: Record<string, unknown>): JobSchedule {
 export function mapAlertPreference(row: Record<string, unknown>): AlertPreference {
   return {
     id: String(row.id),
-    jobId: row.job_id ? String(row.job_id) : row.jobId ? String(row.jobId) : undefined,
+    jobId: String(row.jobId),
     channel: row.channel as AlertPreference["channel"],
     destination: String(row.destination),
     onSuccess: Boolean(row.on_success ?? row.onSuccess),

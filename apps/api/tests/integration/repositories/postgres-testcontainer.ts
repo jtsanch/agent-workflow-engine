@@ -6,22 +6,28 @@ import { pquery } from "../../../src/db/pquery.js";
 
 export async function createRepositoryTestContext() {
   const container = await new PostgreSqlContainer("postgres:16-alpine").start();
-  const databaseUrl = container.getConnectionUri();
-  await runMigrations(databaseUrl);
-  const { pool, db } = createPostgresClient(databaseUrl);
-  const database = new PostgresDatabase(pool, db);
 
-  return {
-    database,
-    async reset() {
-      await pquery(
-        pool,
-        "truncate table node_feedback, node_executions, tool_invocations, job_runs, job_memories, job_alert_preferences, job_schedules, jobs, users restart identity cascade"
-      );
-    },
-    async close() {
-      await pool.end();
-      await container.stop();
-    }
-  };
+  try {
+    const databaseUrl = container.getConnectionUri();
+    await runMigrations(databaseUrl);
+    const { pool, db } = createPostgresClient(databaseUrl);
+    const database = new PostgresDatabase(pool, db);
+
+    return {
+      database,
+      async reset() {
+        await pquery(
+          pool,
+          "truncate table node_feedback, node_executions, tool_invocations, job_runs, job_memories, job_alert_preferences, job_schedules, jobs, users restart identity cascade"
+        );
+      },
+      async close() {
+        await pool.end();
+        await container.stop();
+      }
+    };
+  } catch (error) {
+    await container.stop();
+    throw error;
+  }
 }

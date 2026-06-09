@@ -9,17 +9,23 @@ import {
 import { createRepositoryTestContext } from "./postgres-testcontainer.js";
 
 describe("postgres job repositories", () => {
-  let context: Awaited<ReturnType<typeof createRepositoryTestContext>>;
+  let context: Awaited<ReturnType<typeof createRepositoryTestContext>> | undefined;
 
   beforeAll(async () => {
     context = await createRepositoryTestContext();
   });
 
   afterAll(async () => {
-    await context.close();
+    if (context) {
+      await context.close();
+    }
   });
 
   beforeEach(async () => {
+    if (!context) {
+      throw new Error("Repository test context was not initialized");
+    }
+
     await context.reset();
   });
 

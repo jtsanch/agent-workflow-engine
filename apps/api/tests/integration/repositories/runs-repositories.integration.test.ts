@@ -14,27 +14,29 @@ import { createRepositoryTestContext } from "./postgres-testcontainer.js";
 describe("postgres run repositories", () => {
   let context: Awaited<ReturnType<typeof createRepositoryTestContext>> | undefined;
 
+  function getContext(): Awaited<ReturnType<typeof createRepositoryTestContext>> {
+    if (!context) {
+      throw new Error("Repository test context was not initialized");
+    }
+
+    return context;
+  }
+
   beforeAll(async () => {
     context = await createRepositoryTestContext();
   });
 
   afterAll(async () => {
-    if (context) {
-      await context.close();
-    }
+    await context?.close();
   });
 
   beforeEach(async () => {
-    if (!context) {
-      throw new Error("Repository test context was not initialized");
-    }
-
-    await context.reset();
+    await getContext().reset();
   });
 
   async function seedJob(userId: string, jobId: string): Promise<Job> {
     const nowDate = new Date("2026-05-10T00:00:00.000Z");
-    await context.database.db.insert(usersTable).values({
+    await getContext().database.db.insert(usersTable).values({
       id: userId,
       email: `${userId}@example.com`,
       firstName: "Test",
@@ -56,12 +58,12 @@ describe("postgres run repositories", () => {
       createdAt: nowDate.toISOString(),
       updatedAt: nowDate.toISOString()
     };
-    await new PostgresJobRepository(context.database).create(job);
+    await new PostgresJobRepository(getContext().database).create(job);
     return job;
   }
 
   it("persists and lists job runs scoped to a user", async () => {
-    const repository = new PostgresJobRunRepository(context.database);
+    const repository = new PostgresJobRunRepository(getContext().database);
     await seedJob("00000000-0000-0000-0000-000000000001", "job_1");
     await seedJob("00000000-0000-0000-0000-000000000002", "job_2");
     const run1: JobRun = {
@@ -100,10 +102,10 @@ describe("postgres run repositories", () => {
   });
 
   it("persists node executions, tool invocations, and node feedback", async () => {
-    const runRepository = new PostgresJobRunRepository(context.database);
-    const nodeExecutionRepository = new PostgresNodeExecutionRepository(context.database);
-    const toolInvocationRepository = new PostgresToolInvocationRepository(context.database);
-    const nodeFeedbackRepository = new PostgresNodeFeedbackRepository(context.database);
+    const runRepository = new PostgresJobRunRepository(getContext().database);
+    const nodeExecutionRepository = new PostgresNodeExecutionRepository(getContext().database);
+    const toolInvocationRepository = new PostgresToolInvocationRepository(getContext().database);
+    const nodeFeedbackRepository = new PostgresNodeFeedbackRepository(getContext().database);
     await seedJob("00000000-0000-0000-0000-000000000003", "job_3");
     const run: JobRun = {
       id: "run_3",
@@ -161,7 +163,7 @@ describe("postgres run repositories", () => {
   });
 
   it("upserts job memories by (jobId, key)", async () => {
-    const repository = new PostgresJobMemoryRepository(context.database);
+    const repository = new PostgresJobMemoryRepository(getContext().database);
     await seedJob("00000000-0000-0000-0000-000000000004", "job_4");
     const firstMemory: JobMemory = {
       id: "memory_1",

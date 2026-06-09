@@ -11,27 +11,29 @@ import { createRepositoryTestContext } from "./postgres-testcontainer.js";
 describe("postgres job repositories", () => {
   let context: Awaited<ReturnType<typeof createRepositoryTestContext>> | undefined;
 
+  function getContext(): Awaited<ReturnType<typeof createRepositoryTestContext>> {
+    if (!context) {
+      throw new Error("Repository test context was not initialized");
+    }
+
+    return context;
+  }
+
   beforeAll(async () => {
     context = await createRepositoryTestContext();
   });
 
   afterAll(async () => {
-    if (context) {
-      await context.close();
-    }
+    await context?.close();
   });
 
   beforeEach(async () => {
-    if (!context) {
-      throw new Error("Repository test context was not initialized");
-    }
-
-    await context.reset();
+    await getContext().reset();
   });
 
   async function seedUser(userId: string) {
     const now = new Date("2026-05-10T00:00:00.000Z");
-    await context.database.db.insert(usersTable).values({
+    await getContext().database.db.insert(usersTable).values({
       id: userId,
       email: `${userId}@example.com`,
       firstName: "Test",
@@ -45,7 +47,7 @@ describe("postgres job repositories", () => {
   }
 
   it("persists and queries jobs by id and owner", async () => {
-    const repository = new PostgresJobRepository(context.database);
+    const repository = new PostgresJobRepository(getContext().database);
     const now = "2026-05-10T00:00:00.000Z";
     await seedUser("00000000-0000-0000-0000-000000000001");
     await seedUser("00000000-0000-0000-0000-000000000002");
@@ -74,9 +76,9 @@ describe("postgres job repositories", () => {
   });
 
   it("persists job schedules and alert preferences for a job", async () => {
-    const jobRepository = new PostgresJobRepository(context.database);
-    const scheduleRepository = new PostgresJobScheduleRepository(context.database);
-    const alertPreferenceRepository = new PostgresAlertPreferenceRepository(context.database);
+    const jobRepository = new PostgresJobRepository(getContext().database);
+    const scheduleRepository = new PostgresJobScheduleRepository(getContext().database);
+    const alertPreferenceRepository = new PostgresAlertPreferenceRepository(getContext().database);
     const now = "2026-05-10T00:00:00.000Z";
     await seedUser("00000000-0000-0000-0000-000000000003");
     await jobRepository.create({
@@ -123,7 +125,7 @@ describe("postgres job repositories", () => {
         onFailure: true
       }
     ]);
-    const persistedJob = await context.database.db.select().from(jobsTable);
+    const persistedJob = await getContext().database.db.select().from(jobsTable);
     expect(persistedJob).toHaveLength(1);
   });
 });

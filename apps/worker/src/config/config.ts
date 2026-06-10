@@ -5,7 +5,10 @@ const schema = z.object({
   DB_DRIVER: z.enum(["postgres", "memory"]).default("postgres"),
   DATABASE_URL: z.string().default("postgres://postgres:postgres@localhost:5433/personal_agent_os"),
   JOB_POLL_INTERVAL_MS: z.coerce.number().default(5000),
-  WORKER_CONCURRENCY: z.coerce.number().default(5)
+  WORKER_CONCURRENCY: z.coerce.number().default(5),
+  WORKER_LEASE_DURATION_MS: z.coerce.number().positive().default(30000),
+  WORKER_HEARTBEAT_INTERVAL_MS: z.coerce.number().positive().default(10000),
+  WORKER_SHUTDOWN_GRACE_MS: z.coerce.number().positive().default(30000)
 });
 
 export type WorkerConfig = {
@@ -14,6 +17,9 @@ export type WorkerConfig = {
   databaseUrl: string;
   jobPollIntervalMs: number;
   workerConcurrency: number;
+  workerLeaseDurationMs: number;
+  workerHeartbeatIntervalMs: number;
+  workerShutdownGraceMs: number;
 };
 
 export function loadWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerConfig {
@@ -32,6 +38,9 @@ export function loadWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerCo
     dbDriver: data.DB_DRIVER,
     databaseUrl: data.DATABASE_URL,
     jobPollIntervalMs: data.JOB_POLL_INTERVAL_MS,
-    workerConcurrency: data.WORKER_CONCURRENCY
+    workerConcurrency: data.WORKER_CONCURRENCY,
+    workerLeaseDurationMs: data.WORKER_LEASE_DURATION_MS,
+    workerHeartbeatIntervalMs: data.WORKER_HEARTBEAT_INTERVAL_MS,
+    workerShutdownGraceMs: data.WORKER_SHUTDOWN_GRACE_MS
   });
 }

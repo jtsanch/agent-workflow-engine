@@ -6,6 +6,13 @@ export interface ClaimedRunRecord {
   job: Job;
 }
 
+export class RunOwnershipLostError extends Error {
+  constructor(public readonly runId: string, message = `Run ownership lost for ${runId}`) {
+    super(message);
+    this.name = "RunOwnershipLostError";
+  }
+}
+
 export interface UsageStateRecord {
   dailyUsed: number;
   dailyLimit: number;
@@ -34,6 +41,7 @@ export interface FinalizeRunRecord {
 
 export interface WorkerPersistenceRepository {
   claimNextQueuedRun(): Promise<ClaimedRunRecord | null>;
+  renewRunLease(runId: string): Promise<void>;
   failRun(runId: string, errorMessage: string, completedAt?: string): Promise<void>;
   loadUsageState(userId: string): Promise<UsageStateRecord>;
   updateUsageState(userId: string, state: UsageStateRecord): Promise<void>;

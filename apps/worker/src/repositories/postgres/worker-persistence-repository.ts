@@ -9,6 +9,7 @@ import type {
   UsageStateRecord,
   WorkerPersistenceRepository
 } from "../interfaces.js";
+import { RunOwnershipLostError as RunOwnershipLost } from "../interfaces.js";
 
 interface QueuedRunRow {
   run_id: string;
@@ -37,11 +38,18 @@ function toJsonObject(value: Record<string, unknown>): JsonObject {
 }
 
 export class PostgresWorkerPersistenceRepository implements WorkerPersistenceRepository {
-  constructor(private readonly pool: Pool) {}
+  constructor(
+    private readonly pool: Pool,
+    private readonly workerId: string,
+    private readonly leaseDurationMs: number
+  ) {}
 
   async claimNextQueuedRun(): Promise<ClaimedRunRecord | null> {
     const client = await this.pool.connect();
     try {
+      const claimedAt = new Date().toISOString();
+      const leaseExpiresAt = new Date(Date.now() + this.leaseDurationMs).toISOString();
+
       await pquery(client, "begin");
       const result = await pquery<QueuedRunRow>(
         client,
@@ -60,10 +68,16 @@ export class PostgresWorkerPersistenceRepository implements WorkerPersistenceRep
           from job_runs jr
           inner join jobs j on j.id = jr.job_id
           where jr.status = 'queued'
-          order by jr.started_at asc
+             or (
+               jr.status = 'running'
+               and jr.lease_expires_at is not null
+               and jr.lease_expires_at <= $1::timestamptz
+             )
+          order by jr.queued_at asc, jr.id asc
           limit 1
           for update skip locked
-        `
+        `,
+        [claimedAt]
       );
 
       const row = result.rows[0];
@@ -73,7 +87,19 @@ export class PostgresWorkerPersistenceRepository implements WorkerPersistenceRep
         return null;
       }
 
-      await pquery(client, "update job_runs set status = 'running' where id = $1", [row.run_id]);
+      await pquery(
+        client,
+        `
+          update job_runs
+          set status = 'running',
+              claimed_at = $2::timestamptz,
+              lease_expires_at = $3::timestamptz,
+              last_heartbeat_at = $2::timestamptz,
+              claimed_by_worker_id = $4
+          where id = $1
+        `,
+        [row.run_id, claimedAt, leaseExpiresAt, this.workerId]
+      );
       await pquery(client, "commit");
 
       return {
@@ -98,21 +124,47 @@ export class PostgresWorkerPersistenceRepository implements WorkerPersistenceRep
     }
   }
 
-  async failRun(runId: string, errorMessage: string, completedAt?: string): Promise<void> {
-    if (completedAt) {
-      await pquery(
-        this.pool,
-        "update job_runs set status = 'failed', completed_at = $2, error_message = $3 where id = $1",
-        [runId, completedAt, errorMessage]
-      );
-      return;
-    }
-
-    await pquery(
+  async renewRunLease(runId: string): Promise<void> {
+    const heartbeatAt = new Date().toISOString();
+    const leaseExpiresAt = new Date(Date.now() + this.leaseDurationMs).toISOString();
+    const result = await pquery(
       this.pool,
-      "update job_runs set status = 'failed', error_message = $2, completed_at = now() where id = $1",
-      [runId, errorMessage]
+      `
+        update job_runs
+        set lease_expires_at = $3::timestamptz,
+            last_heartbeat_at = $2::timestamptz
+        where id = $1
+          and status = 'running'
+          and claimed_by_worker_id = $4
+      `,
+      [runId, heartbeatAt, leaseExpiresAt, this.workerId]
     );
+
+    if (result.rowCount === 0) {
+      throw new RunOwnershipLost(runId);
+    }
+  }
+
+  async failRun(runId: string, errorMessage: string, completedAt?: string): Promise<void> {
+    const finalizedAt = completedAt ?? new Date().toISOString();
+    const result = await pquery(
+      this.pool,
+      `
+        update job_runs
+        set status = 'failed',
+            completed_at = $2::timestamptz,
+            error_message = $3,
+            lease_expires_at = null
+        where id = $1
+          and status = 'running'
+          and claimed_by_worker_id = $4
+      `,
+      [runId, finalizedAt, errorMessage, this.workerId]
+    );
+
+    if (result.rowCount === 0) {
+      throw new RunOwnershipLost(runId);
+    }
   }
 
   async loadUsageState(userId: string): Promise<UsageStateRecord> {
@@ -308,24 +360,44 @@ export class PostgresWorkerPersistenceRepository implements WorkerPersistenceRep
       }
 
       if (record.jobStatus === "succeeded") {
-        await pquery(
+        const updateResult = await pquery(
           client,
           `
             update job_runs
             set status = 'succeeded',
-                completed_at = $2,
+                completed_at = $2::timestamptz,
                 output = $3::jsonb,
-                error_message = null
+                error_message = null,
+                lease_expires_at = null
             where id = $1
+              and status = 'running'
+              and claimed_by_worker_id = $4
           `,
-          [record.runId, record.completedAt, JSON.stringify(record.finalOutput ?? null)]
+          [record.runId, record.completedAt, JSON.stringify(record.finalOutput ?? null), this.workerId]
         );
+
+        if (updateResult.rowCount === 0) {
+          throw new RunOwnershipLost(record.runId);
+        }
       } else {
-        await pquery(
+        const updateResult = await pquery(
           client,
-          "update job_runs set status = 'failed', completed_at = $2, error_message = $3 where id = $1",
-          [record.runId, record.completedAt, record.errorMessage]
+          `
+            update job_runs
+            set status = 'failed',
+                completed_at = $2::timestamptz,
+                error_message = $3,
+                lease_expires_at = null
+            where id = $1
+              and status = 'running'
+              and claimed_by_worker_id = $4
+          `,
+          [record.runId, record.completedAt, record.errorMessage, this.workerId]
         );
+
+        if (updateResult.rowCount === 0) {
+          throw new RunOwnershipLost(record.runId);
+        }
       }
 
       await pquery(client, "commit");

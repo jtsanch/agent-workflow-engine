@@ -4,6 +4,7 @@ import { Pool } from "pg";
 import { createLogger } from "@personal-agent-os/observability";
 import { loadWorkerConfig } from "./config/config.js";
 import { PostgresWorkerPersistenceRepository } from "./repositories/postgres/worker-persistence-repository.js";
+import { waitForActiveRun } from "./runtime/shutdown.js";
 import { processNextQueuedRun } from "./runtime/queue-worker.js";
 
 const logger = createLogger("worker");
@@ -117,12 +118,3 @@ main().catch((error) => {
   console.error(error);
   process.exit(1);
 });
-
-async function waitForActiveRun(activeRun: Promise<boolean>, shutdownGraceMs: number): Promise<boolean> {
-  return Promise.race([
-    activeRun.then(() => true),
-    new Promise<boolean>((resolve) => {
-      setTimeout(() => resolve(false), shutdownGraceMs);
-    })
-  ]);
-}

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
-import type { Job, JsonObject, NodeExecution, ToolInvocation } from "@personal-agent-os/shared";
+import type { Job, JsonObject, NodeExecution, NodeFeedback, ToolInvocation } from "@personal-agent-os/shared";
 import { pquery } from "./pquery.js";
 import type {
   ClaimedRunRecord,
@@ -243,6 +243,30 @@ export class PostgresWorkerPersistenceRepository implements WorkerPersistenceRep
           nodeExecution.retryCount,
           nodeExecution.startedAt,
           nodeExecution.completedAt ?? null
+        ]
+      );
+    }
+  }
+
+  async persistNodeFeedback(nodeFeedback: NodeFeedback[]): Promise<void> {
+    for (const feedback of nodeFeedback) {
+      await pquery(
+        this.pool,
+        `
+          insert into node_feedback (
+            id, node_execution_id, source_node_id, target_node_id, score, should_retry, summary, created_at
+          )
+          values ($1, $2, $3, $4, $5, $6, $7, $8)
+        `,
+        [
+          feedback.id,
+          feedback.nodeExecutionId,
+          feedback.sourceNodeId,
+          feedback.targetNodeId || null,
+          feedback.score,
+          feedback.shouldRetry,
+          feedback.summary,
+          feedback.createdAt
         ]
       );
     }

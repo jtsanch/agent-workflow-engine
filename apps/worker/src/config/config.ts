@@ -5,7 +5,7 @@ const schema = z.object({
   DB_DRIVER: z.enum(["postgres", "memory"]).default("postgres"),
   DATABASE_URL: z.string().default("postgres://postgres:postgres@localhost:5433/personal_agent_os"),
   JOB_POLL_INTERVAL_MS: z.coerce.number().default(5000),
-  WORKER_CONCURRENCY: z.coerce.number().default(5),
+  WORKER_CONCURRENCY: z.coerce.number().default(1),
   WORKER_LEASE_DURATION_MS: z.coerce.number().positive().default(30000),
   WORKER_HEARTBEAT_INTERVAL_MS: z.coerce.number().positive().default(10000),
   WORKER_SHUTDOWN_GRACE_MS: z.coerce.number().positive().default(30000)

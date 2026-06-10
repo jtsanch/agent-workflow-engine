@@ -68,6 +68,7 @@ export async function processNextQueuedRun(
         jobRunId: runId
       }))
     );
+    await persistence.persistNodeFeedback(executionResult.nodeFeedback);
     heartbeat.assertOwned();
     await persistence.persistToolInvocations(executionResult.toolInvocations, completedAt);
     heartbeat.assertOwned();
@@ -90,6 +91,7 @@ export async function processNextQueuedRun(
           jobRunId: runId
         }))
       );
+      await persistence.persistNodeFeedback(error.nodeFeedback);
     }
   } finally {
     if (!(await stopHeartbeat(heartbeat, runId))) {

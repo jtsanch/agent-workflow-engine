@@ -15,6 +15,10 @@ export type HydratedRun = JobRun & {
   nodeFeedback: NodeFeedback[];
 };
 
+type LeaseAwareJobRun = JobRun & {
+  queuedAt?: string;
+};
+
 export class RunsService {
   constructor(
     private readonly jobRepository: JobRepository,
@@ -81,11 +85,12 @@ export class RunsService {
       throw new AppError(`Unknown job: ${jobId}`, 404, "job_not_found");
     }
 
-    const run: JobRun = {
+    const run: LeaseAwareJobRun = {
       id: createId("run"),
       jobId: job.id,
       status: "queued",
       triggerSource: "manual",
+      queuedAt: new Date().toISOString(),
       startedAt: new Date().toISOString()
     };
 

@@ -68,11 +68,11 @@ export async function processNextQueuedRun(
         jobRunId: runId
       }))
     );
-    await persistence.persistNodeFeedback(executionResult.nodeFeedback);
+    await persistence.persistNodeFeedback(runId, executionResult.nodeFeedback);
     heartbeat.assertOwned();
-    await persistence.persistToolInvocations(executionResult.toolInvocations, completedAt);
+    await persistence.persistToolInvocations(runId, executionResult.toolInvocations, completedAt);
     heartbeat.assertOwned();
-    await persistence.upsertJobMemories(job.id, executionResult.memoryWrites, completedAt);
+    await persistence.upsertJobMemories(runId, job.id, executionResult.memoryWrites, completedAt);
   } catch (error) {
     if (error instanceof RunOwnershipLostError) {
       shouldFinalize = false;
@@ -91,7 +91,7 @@ export async function processNextQueuedRun(
           jobRunId: runId
         }))
       );
-      await persistence.persistNodeFeedback(error.nodeFeedback);
+      await persistence.persistNodeFeedback(runId, error.nodeFeedback);
     }
   } finally {
     if (!(await stopHeartbeat(heartbeat, runId))) {

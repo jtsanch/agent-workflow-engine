@@ -168,7 +168,7 @@ class FakeWorkerPersistenceRepository implements WorkerPersistenceRepository {
     return;
   }
 
-  async persistNodeFeedback(nodeFeedback: NodeFeedback[]): Promise<void> {
+  async persistNodeFeedback(_runId: string, nodeFeedback: NodeFeedback[]): Promise<void> {
     this.state.nodeFeedback.push(...nodeFeedback);
   }
 

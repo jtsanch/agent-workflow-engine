@@ -46,8 +46,13 @@ export interface WorkerPersistenceRepository {
   loadUsageState(userId: string): Promise<UsageStateRecord>;
   updateUsageState(userId: string, state: UsageStateRecord): Promise<void>;
   persistNodeExecutions(nodeExecutions: NodeExecution[]): Promise<void>;
-  persistNodeFeedback(nodeFeedback: NodeFeedback[]): Promise<void>;
-  persistToolInvocations(toolInvocations: ToolInvocation[], defaultCreatedAt: string): Promise<void>;
-  upsertJobMemories(jobId: string, memoryWrites: JobMemoryWriteRecord[], updatedAt: string): Promise<void>;
+  persistNodeFeedback(runId: string, nodeFeedback: NodeFeedback[]): Promise<void>;
+  persistToolInvocations(runId: string, toolInvocations: ToolInvocation[], defaultCreatedAt: string): Promise<void>;
+  upsertJobMemories(
+    runId: string,
+    jobId: string,
+    memoryWrites: JobMemoryWriteRecord[],
+    updatedAt: string
+  ): Promise<void>;
   finalizeRun(record: FinalizeRunRecord): Promise<void>;
 }

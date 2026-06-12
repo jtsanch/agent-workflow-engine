@@ -8,7 +8,13 @@ import type {
   ToolInvocation
 } from "@personal-agent-os/shared";
 
-const apiBaseUrl = "http://localhost:4000";
+const apiBaseUrl = import.meta.env.VITE_API_URL;
+
+if (!apiBaseUrl) {
+  throw new Error("Missing VITE_API_URL");
+}
+
+const normalizedApiBaseUrl = apiBaseUrl.endsWith("/") ? apiBaseUrl.slice(0, -1) : apiBaseUrl;
 
 declare global {
   interface Window {
@@ -91,6 +97,13 @@ export interface SearchResponse {
   };
 }
 
+export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  return fetch(`${normalizedApiBaseUrl}${path}`, {
+    ...init,
+    credentials: "include"
+  });
+}
+
 async function getAuthHeaders(headers?: HeadersInit): Promise<Headers> {
   const token = await window.Clerk?.session?.getToken();
   if (!token) {
@@ -103,7 +116,7 @@ async function getAuthHeaders(headers?: HeadersInit): Promise<Headers> {
 }
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${apiBaseUrl}${path}`, {
+  const response = await apiFetch(path, {
     ...init,
     headers: await getAuthHeaders(init?.headers)
   });

@@ -162,6 +162,7 @@ PostgreSQL is the system of record for:
 - workflow-related operational data
 
 Database migrations are explicit and are not coupled to API startup.
+Flyway-managed SQL migrations are the authoritative schema history, while Drizzle schema files are validated against the migrated database shape.
 
 ## Frontend Contract
 

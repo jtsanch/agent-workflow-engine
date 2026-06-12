@@ -14,7 +14,7 @@ import { registerUsageController } from "./modules/usage/controller.js";
 import { registerAdminController } from "./modules/admin/controller.js";
 
 export async function buildApp(context: AppContext): Promise<FastifyInstance> {
-  const app = await createHttpApp();
+  const app = await createHttpApp(context.config);
 
   registerHealthController(app, context.healthService);
 

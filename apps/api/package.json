@@ -7,7 +7,12 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsx watch src/start.ts",
-    "migrate": "tsx src/db/migrate.ts",
+    "migrate": "pnpm run db:migrate:local",
+    "db:validate": "tsx scripts/validate-schema-drift.ts",
+    "db:migrate:local": "tsx scripts/flyway.ts migrate",
+    "db:migrate:prod": "LOAD_ENV_FILE=false tsx scripts/flyway.ts migrate",
+    "db:info": "tsx scripts/flyway.ts info",
+    "db:validate:migrations": "tsx scripts/flyway.ts validate",
     "test": "vitest run",
     "test:unit": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration",

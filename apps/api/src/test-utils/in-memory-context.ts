@@ -8,6 +8,7 @@ export function createInMemoryAppContext(overrides: Partial<AppConfig> = {}): Ap
     env: "test",
     dbDriver: "memory",
     databaseUrl: "postgres://postgres:postgres@localhost:5433/personal_agent_os",
+    apiCorsOrigin: "http://localhost:5173",
     awsRegion: "us-west-2",
     defaultTimezone: "America/Los_Angeles",
     clerkSecretKey: "sk_test_example",

@@ -54,6 +54,10 @@ export interface AppContext {
 export function createAppContext(config: AppConfig): AppContext {
   const agentCatalogService = new AgentCatalogService();
 
+  if (config.env === "production" && config.dbDriver !== "postgres") {
+    throw new Error("API production runtime requires DB_DRIVER=postgres");
+  }
+
   const database =
     config.dbDriver === "postgres"
       ? (() => {
@@ -99,6 +103,10 @@ export function createAppContext(config: AppConfig): AppContext {
     userRepository && userUsageService ? new AdminUsersService(userRepository, userUsageService) : null;
   const authContextService =
     userService && userBootstrapService ? new AuthContextService(userService, userBootstrapService) : null;
+
+  if (config.env === "production" && (!userService || !userUsageService || !authContextService)) {
+    throw new Error("API production runtime requires Postgres-backed auth and user services");
+  }
 
   const jobsService = new JobsService(
     jobRepository,

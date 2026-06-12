@@ -71,7 +71,7 @@ export function registerAuthMiddleware(app: FastifyInstance, authContextService:
     };
 
     if (!authContextService) {
-      throw new AppError("Invalid auth configuration", 500, "internal_error");
+      throw new AppError("Invalid auth configuration: auth context service is unavailable", 500, "internal_error");
     }
 
     request.authContext = await authContextService.authenticate(request.clerkAuth, new Date().toISOString());

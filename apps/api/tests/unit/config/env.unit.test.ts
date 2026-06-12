@@ -11,8 +11,7 @@ describe("loadConfig", () => {
       API_CORS_ORIGIN: "http://localhost:5173",
       AWS_REGION: "us-west-2",
       DEFAULT_TIMEZONE: "America/Los_Angeles",
-      CLERK_SECRET_KEY: "sk_test_example",
-      CLERK_PUBLISHABLE_KEY: "pk_test_example"
+      CLERK_SECRET_KEY: "sk_test_example"
     });
 
     expect(config).toEqual({
@@ -23,8 +22,7 @@ describe("loadConfig", () => {
       apiCorsOrigin: ["http://localhost:5173"],
       awsRegion: "us-west-2",
       defaultTimezone: "America/Los_Angeles",
-      clerkSecretKey: "sk_test_example",
-      clerkPublishableKey: "pk_test_example"
+      clerkSecretKey: "sk_test_example"
     });
   });
 
@@ -37,8 +35,7 @@ describe("loadConfig", () => {
       API_CORS_ORIGIN: "http://localhost:5173, https://app.example.com ,https://admin.example.com",
       AWS_REGION: "us-west-2",
       DEFAULT_TIMEZONE: "America/Los_Angeles",
-      CLERK_SECRET_KEY: "sk_test_example",
-      CLERK_PUBLISHABLE_KEY: "pk_test_example"
+      CLERK_SECRET_KEY: "sk_test_example"
     });
 
     expect(config.apiCorsOrigin).toEqual([
@@ -57,8 +54,7 @@ describe("loadConfig", () => {
       API_CORS_ORIGIN: "https://agent-workflow-engine-web.vercel.app/, http://localhost:5173/path",
       AWS_REGION: "us-west-2",
       DEFAULT_TIMEZONE: "America/Los_Angeles",
-      CLERK_SECRET_KEY: "sk_test_example",
-      CLERK_PUBLISHABLE_KEY: "pk_test_example"
+      CLERK_SECRET_KEY: "sk_test_example"
     });
 
     expect(config.apiCorsOrigin).toEqual([
@@ -76,8 +72,7 @@ describe("loadConfig", () => {
         DATABASE_URL: "postgres://postgres:postgres@localhost:5433/personal_agent_os",
         AWS_REGION: "us-west-2",
         DEFAULT_TIMEZONE: "America/Los_Angeles",
-        CLERK_SECRET_KEY: "sk_test_example",
-        CLERK_PUBLISHABLE_KEY: "pk_test_example"
+        CLERK_SECRET_KEY: "sk_test_example"
       })
     ).toThrow("API environment validation failed");
   });
@@ -92,8 +87,7 @@ describe("loadConfig", () => {
         API_CORS_ORIGIN: " ,  , ",
         AWS_REGION: "us-west-2",
         DEFAULT_TIMEZONE: "America/Los_Angeles",
-        CLERK_SECRET_KEY: "sk_test_example",
-        CLERK_PUBLISHABLE_KEY: "pk_test_example"
+        CLERK_SECRET_KEY: "sk_test_example"
       })
     ).toThrow("API environment validation failed");
   });
@@ -108,8 +102,50 @@ describe("loadConfig", () => {
         API_CORS_ORIGIN: "not-a-url",
         AWS_REGION: "us-west-2",
         DEFAULT_TIMEZONE: "America/Los_Angeles",
-        CLERK_SECRET_KEY: "sk_test_example",
-        CLERK_PUBLISHABLE_KEY: "pk_test_example"
+        CLERK_SECRET_KEY: "sk_test_example"
+      })
+    ).toThrow("API environment validation failed");
+  });
+
+  it("fails fast in production when DB_DRIVER is not explicitly set", () => {
+    expect(() =>
+      loadConfig({
+        PORT: "4200",
+        NODE_ENV: "production",
+        DATABASE_URL: "postgres://postgres:postgres@db.example.com:5432/personal_agent_os",
+        API_CORS_ORIGIN: "https://app.example.com",
+        AWS_REGION: "us-west-2",
+        DEFAULT_TIMEZONE: "America/Los_Angeles",
+        CLERK_SECRET_KEY: "sk_test_example"
+      })
+    ).toThrow("API environment validation failed");
+  });
+
+  it("fails fast in production when DB_DRIVER is not postgres", () => {
+    expect(() =>
+      loadConfig({
+        PORT: "4200",
+        NODE_ENV: "production",
+        DB_DRIVER: "memory",
+        DATABASE_URL: "postgres://postgres:postgres@db.example.com:5432/personal_agent_os",
+        API_CORS_ORIGIN: "https://app.example.com",
+        AWS_REGION: "us-west-2",
+        DEFAULT_TIMEZONE: "America/Los_Angeles",
+        CLERK_SECRET_KEY: "sk_test_example"
+      })
+    ).toThrow("API environment validation failed");
+  });
+
+  it("fails fast in production when DATABASE_URL is not explicitly set", () => {
+    expect(() =>
+      loadConfig({
+        PORT: "4200",
+        NODE_ENV: "production",
+        DB_DRIVER: "postgres",
+        API_CORS_ORIGIN: "https://app.example.com",
+        AWS_REGION: "us-west-2",
+        DEFAULT_TIMEZONE: "America/Los_Angeles",
+        CLERK_SECRET_KEY: "sk_test_example"
       })
     ).toThrow("API environment validation failed");
   });

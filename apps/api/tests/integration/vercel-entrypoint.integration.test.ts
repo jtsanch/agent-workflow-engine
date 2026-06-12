@@ -32,7 +32,6 @@ async function startHandlerServer(): Promise<{
   process.env.DB_DRIVER = "memory";
   process.env.API_CORS_ORIGIN = "http://localhost:5173,https://app.example.com";
   process.env.CLERK_SECRET_KEY = "sk_test_example";
-  process.env.CLERK_PUBLISHABLE_KEY = "pk_test_example";
 
   const module = await import("../../api/index.js");
   const server = createServer((request, response) => {

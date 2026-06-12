@@ -57,7 +57,7 @@ Sub-boundaries:
 - `src/modules`: HTTP route registration
 - `src/services`: application services and policy
 - `src/repositories`: persistence contracts and adapters
-- `src/db`: schema, migrations, database wiring
+- `src/db`: authoritative Flyway SQL migrations, Drizzle schema, and database wiring
 - `src/common`: shared API-only concerns
 
 ### `apps/worker`

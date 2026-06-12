@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { createLogger, createMetrics } from "@personal-agent-os/observability";
 import { createAppContext } from "./app-context.js";
-import { buildApp } from "./build-app.js";
+import { buildApp } from "./app.js";
 import { loadConfig } from "./config/config.js";
 
 async function main() {

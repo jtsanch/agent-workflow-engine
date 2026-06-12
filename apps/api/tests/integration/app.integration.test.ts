@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { buildApp } from "../../src/build-app.js";
+import { buildApp } from "../../src/app.js";
 import { AppError } from "../../src/common/errors.js";
 import type { AuthContextAuthenticator } from "../../src/services/auth-context-service.js";
 import type { UserService } from "../../src/services/user-service.js";

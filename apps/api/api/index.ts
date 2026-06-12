@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { FastifyInstance } from "fastify";
 import "dotenv/config";
 import { createAppContext } from "../src/app-context.js";
-import { buildApp } from "../src/build-app.js";
+import { buildApp } from "../src/app.js";
 import { loadConfig } from "../src/config/config.js";
 
 let appPromise: Promise<FastifyInstance> | null = null;

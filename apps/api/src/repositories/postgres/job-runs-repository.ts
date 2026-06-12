@@ -7,6 +7,14 @@ import type { JobRunRepository } from "../interfaces.js";
 import { mapJobRun } from "./mappers.js";
 import { asNodeOutput } from "../sql-helpers.js";
 
+type LeaseAwareJobRun = JobRun & {
+  queuedAt?: string;
+  claimedAt?: string;
+  leaseExpiresAt?: string;
+  lastHeartbeatAt?: string;
+  claimedByWorkerId?: string;
+};
+
 export class PostgresJobRunRepository extends BaseRepository implements JobRunRepository {
   constructor(db: PostgresDatabase) {
     super(db);
@@ -33,15 +41,22 @@ export class PostgresJobRunRepository extends BaseRepository implements JobRunRe
 
   async create(run: JobRun): Promise<JobRun> {
     return this.exec("job_runs.create", async () => {
+      const leaseAwareRun = run as LeaseAwareJobRun;
+
       await this.db.insert(jobRunsTable).values({
-        id: run.id,
-        jobId: run.jobId,
-        status: run.status,
-        triggerSource: run.triggerSource,
-        startedAt: new Date(run.startedAt),
-        completedAt: run.completedAt ? new Date(run.completedAt) : null,
-        output: asNodeOutput(run.output) ?? null,
-        errorMessage: run.errorMessage ?? null
+        id: leaseAwareRun.id,
+        jobId: leaseAwareRun.jobId,
+        status: leaseAwareRun.status,
+        triggerSource: leaseAwareRun.triggerSource,
+        queuedAt: leaseAwareRun.queuedAt ? new Date(leaseAwareRun.queuedAt) : new Date(leaseAwareRun.startedAt),
+        claimedAt: leaseAwareRun.claimedAt ? new Date(leaseAwareRun.claimedAt) : null,
+        leaseExpiresAt: leaseAwareRun.leaseExpiresAt ? new Date(leaseAwareRun.leaseExpiresAt) : null,
+        lastHeartbeatAt: leaseAwareRun.lastHeartbeatAt ? new Date(leaseAwareRun.lastHeartbeatAt) : null,
+        claimedByWorkerId: leaseAwareRun.claimedByWorkerId ?? null,
+        startedAt: new Date(leaseAwareRun.startedAt),
+        completedAt: leaseAwareRun.completedAt ? new Date(leaseAwareRun.completedAt) : null,
+        output: asNodeOutput(leaseAwareRun.output) ?? null,
+        errorMessage: leaseAwareRun.errorMessage ?? null
       });
       return run;
     });
@@ -49,15 +64,22 @@ export class PostgresJobRunRepository extends BaseRepository implements JobRunRe
 
   async update(run: JobRun): Promise<JobRun> {
     return this.exec("job_runs.update", async () => {
+      const leaseAwareRun = run as LeaseAwareJobRun;
+
       await this.db
         .update(jobRunsTable)
         .set({
-          status: run.status,
-          completedAt: run.completedAt ? new Date(run.completedAt) : null,
-          output: asNodeOutput(run.output) ?? null,
-          errorMessage: run.errorMessage ?? null
+          status: leaseAwareRun.status,
+          queuedAt: leaseAwareRun.queuedAt ? new Date(leaseAwareRun.queuedAt) : undefined,
+          claimedAt: leaseAwareRun.claimedAt ? new Date(leaseAwareRun.claimedAt) : null,
+          leaseExpiresAt: leaseAwareRun.leaseExpiresAt ? new Date(leaseAwareRun.leaseExpiresAt) : null,
+          lastHeartbeatAt: leaseAwareRun.lastHeartbeatAt ? new Date(leaseAwareRun.lastHeartbeatAt) : null,
+          claimedByWorkerId: leaseAwareRun.claimedByWorkerId ?? null,
+          completedAt: leaseAwareRun.completedAt ? new Date(leaseAwareRun.completedAt) : null,
+          output: asNodeOutput(leaseAwareRun.output) ?? null,
+          errorMessage: leaseAwareRun.errorMessage ?? null
         })
-        .where(eq(jobRunsTable.id, run.id));
+        .where(eq(jobRunsTable.id, leaseAwareRun.id));
       return run;
     });
   }

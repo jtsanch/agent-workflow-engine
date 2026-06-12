@@ -7,11 +7,11 @@ The workers domain is the execution-plane runtime for queued workflow runs.
 It currently covers:
 
 - polling for queued runs
-- claiming and marking runs as running
+- claiming queued or expired runs with a lease
 - resolving jobs to workflow definitions
 - DAG execution
 - usage-limit enforcement at execution time
-- persistence of runtime telemetry, final output, and usage events
+- persistence of runtime telemetry, node feedback, final output, and usage events
 
 It does not expose an HTTP API of its own.
 
@@ -44,6 +44,9 @@ It is configured with:
 - `databaseUrl`
 - `jobPollIntervalMs`
 - `workerConcurrency`
+- `workerLeaseDurationMs`
+- `workerHeartbeatIntervalMs`
+- `workerShutdownGraceMs`
 
 ### Queued Run
 
@@ -179,7 +182,7 @@ It does not own HTTP-facing concerns or control-plane orchestration.
 
 - finding queued runs
 - claiming a single queued run
-- marking the run `running`
+- renewing the active run lease while work is in flight
 - loading quota state
 - invoking execution
 - persisting completion or failure state
@@ -217,7 +220,8 @@ The implementation enforces or assumes the following invariants:
 
 - the worker is intended to process queued runs only when `DB_DRIVER=postgres`
 - a run must be claimed before it is executed
-- queue claim is single-run and uses row-level locking semantics
+- queue claim is single-run, lease-based, and uses row-level locking semantics
+- only the claiming worker may renew or finalize a running run
 - execution requires the job to resolve to a known workflow definition
 - usage limits are checked before execution begins
 - node outputs are append-only in execution state
@@ -232,12 +236,15 @@ The implementation enforces or assumes the following invariants:
 - The worker polls continuously.
 - If no queued run is available, it sleeps for the configured interval.
 - The worker claims at most one run per polling iteration.
+- The worker handles one run at a time in the current implementation.
 
 ### Run Claiming
 
-- Queued runs are selected in ascending `started_at` order.
+- Queued runs are selected in ascending `queued_at` order.
+- Expired `running` runs can be reclaimed when their lease has lapsed.
 - Claiming uses `FOR UPDATE SKIP LOCKED`.
-- A claimed run is immediately marked `running`.
+- A claimed run is immediately marked `running`, assigned a worker id, and given a lease expiration.
+- Active runs renew their lease on a heartbeat interval while execution is in progress.
 
 ### Workflow Resolution
 
@@ -262,6 +269,7 @@ The implementation enforces or assumes the following invariants:
 
 - Successful execution persists:
   - node executions
+  - node feedback
   - tool invocations
   - job memories
   - usage events
@@ -271,6 +279,7 @@ The implementation enforces or assumes the following invariants:
   - failed run status
   - error message
   - partial node execution telemetry when available
+  - partial node feedback when available
 
 ## APIs
 
@@ -302,15 +311,16 @@ The main workflow engine entrypoint is:
 1. The worker loads configuration from environment.
 2. If the configured database driver is not Postgres, the worker logs a warning and exits.
 3. The worker creates a Postgres pool.
-4. The worker enters an infinite polling loop.
+4. The worker generates a process-local worker id.
+5. The worker enters a polling loop and listens for shutdown signals.
 
 ### 2. Queue Claim Flow
 
 1. The worker starts a database transaction.
-2. It selects the earliest queued run joined with its job.
+2. It selects the earliest queued run, or an expired `running` run, joined with its job.
 3. The row is locked with `FOR UPDATE SKIP LOCKED`.
 4. If no row is found, the transaction rolls back and the worker reports no work.
-5. If a row is found, the run is updated to `running`.
+5. If a row is found, the run is updated to `running` with `claimed_at`, `lease_expires_at`, `last_heartbeat_at`, and `claimed_by_worker_id`.
 6. The transaction commits.
 7. The worker proceeds with the claimed run and reconstructed job payload.
 
@@ -333,26 +343,36 @@ The main workflow engine entrypoint is:
 4. The DAG engine validates the DAG.
 5. Execution state is initialized.
 6. Runnable nodes are discovered from dependency satisfaction.
-7. Each runnable node is executed.
-8. Node outputs, feedback, and usage events are collected.
-9. Evaluator feedback may trigger retry scheduling.
-10. The run completes when all terminal nodes are completed.
+7. A heartbeat loop renews the run lease while the worker still owns the run.
+8. Each runnable node is executed.
+9. Node outputs, feedback, and usage events are collected.
+10. Evaluator feedback may trigger retry scheduling.
+11. The run completes when all terminal nodes are completed.
 
 ### 5. Successful Completion Flow
 
 1. Node executions are persisted.
-2. Tool invocations are persisted.
-3. Memory writes are persisted to `job_memories`.
-4. Usage events are prepared for insertion.
-5. A final transaction inserts usage events, increments counters, and marks the run `succeeded`.
-6. Final output is stored on the run record.
+2. Node feedback is persisted.
+3. Tool invocations are persisted.
+4. Memory writes are persisted to `job_memories`.
+5. Usage events are prepared for insertion.
+6. A final transaction inserts usage events, increments counters, and marks the run `succeeded` only if the current worker still owns the run.
+7. Final output is stored on the run record.
 
 ### 6. Failure Flow
 
 1. Any thrown execution error is captured by the queue worker.
 2. The run is marked for failure.
-3. If the error is a `DAGExecutionError`, partial node execution telemetry is persisted.
-4. The worker finalizes the run as `failed` with an error message.
+3. If the error is a `DAGExecutionError`, partial node execution telemetry and node feedback are persisted.
+4. The worker finalizes the run as `failed` with an error message only if it still owns the run lease.
+
+### 7. Graceful Shutdown Flow
+
+1. The worker listens for `SIGINT` and `SIGTERM`.
+2. On shutdown request, it stops polling for new work.
+3. If a run is active, it waits up to `workerShutdownGraceMs` for that run to finish.
+4. If the grace period is exceeded, the process exits with failure.
+5. On successful drain, the Postgres pool is closed and the process exits cleanly.
 
 ## Failure Modes
 
@@ -423,11 +443,11 @@ Observed result:
 
 ## Inconsistencies and Drift
 
-### `WORKER_CONCURRENCY` Is Configured but Not Enforced
+### `WORKER_CONCURRENCY` Is Currently a Guardrail, Not Parallelism
 
-The worker loads and logs `workerConcurrency`, but the polling loop processes one claimed run at a time.
+The worker still processes one claimed run at a time even though `workerConcurrency` remains configurable.
 
-The configuration exists, but current runtime behavior is single-run polling.
+The default is now `1` to match actual behavior, and higher values should not be treated as enabling true parallel run execution yet.
 
 ### Queue Worker Uses Direct SQL Instead of API-Style Repositories
 

@@ -12,6 +12,14 @@ import type {
 } from "@personal-agent-os/shared";
 import { asJsonObject, asJsonValue, asNodeOutput, asRecord } from "../sql-helpers.js";
 
+type LeaseAwareJobRun = JobRun & {
+  queuedAt?: string;
+  claimedAt?: string;
+  leaseExpiresAt?: string;
+  lastHeartbeatAt?: string;
+  claimedByWorkerId?: string;
+};
+
 export function mapJob(row: Record<string, unknown>): Job {
   return {
     id: String(row.id),
@@ -65,11 +73,41 @@ export function mapJobRun(row: Record<string, unknown>): JobRun {
         ? rawOutput as JobRun["output"]
         : { data: rawOutput, artifacts: [] };
 
-  return {
+  const run: LeaseAwareJobRun = {
     id: String(row.id),
     jobId: String(row.job_id ?? row.jobId),
     status: row.status as JobRun["status"],
     triggerSource: (row.trigger_source ?? row.triggerSource) as JobRun["triggerSource"],
+    queuedAt: row.queued_at
+      ? new Date(String(row.queued_at)).toISOString()
+      : row.queuedAt
+        ? new Date(String(row.queuedAt)).toISOString()
+        : row.started_at
+          ? new Date(String(row.started_at)).toISOString()
+          : row.startedAt
+            ? new Date(String(row.startedAt)).toISOString()
+            : undefined,
+    claimedAt: row.claimed_at
+      ? new Date(String(row.claimed_at)).toISOString()
+      : row.claimedAt
+        ? new Date(String(row.claimedAt)).toISOString()
+        : undefined,
+    leaseExpiresAt: row.lease_expires_at
+      ? new Date(String(row.lease_expires_at)).toISOString()
+      : row.leaseExpiresAt
+        ? new Date(String(row.leaseExpiresAt)).toISOString()
+        : undefined,
+    lastHeartbeatAt: row.last_heartbeat_at
+      ? new Date(String(row.last_heartbeat_at)).toISOString()
+      : row.lastHeartbeatAt
+        ? new Date(String(row.lastHeartbeatAt)).toISOString()
+        : undefined,
+    claimedByWorkerId:
+      row.claimed_by_worker_id !== undefined && row.claimed_by_worker_id !== null
+        ? String(row.claimed_by_worker_id)
+        : row.claimedByWorkerId !== undefined && row.claimedByWorkerId !== null
+          ? String(row.claimedByWorkerId)
+          : undefined,
     startedAt: new Date(String(row.started_at ?? row.startedAt)).toISOString(),
     completedAt: row.completed_at
       ? new Date(String(row.completed_at)).toISOString()
@@ -84,6 +122,8 @@ export function mapJobRun(row: Record<string, unknown>): JobRun {
           ? String(row.errorMessage)
           : undefined
   };
+
+  return run;
 }
 
 export function mapJobRunStep(row: Record<string, unknown>): JobRunStep {

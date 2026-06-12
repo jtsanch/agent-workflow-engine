@@ -307,6 +307,11 @@ export interface JobRun {
   jobId: EntityId;
   status: JobRunStatus;
   triggerSource: "manual" | "schedule" | "api";
+  queuedAt?: Timestamp;
+  claimedAt?: Timestamp;
+  leaseExpiresAt?: Timestamp;
+  lastHeartbeatAt?: Timestamp;
+  claimedByWorkerId?: string;
   startedAt: Timestamp;
   completedAt?: Timestamp;
   output?: NodeOutput;

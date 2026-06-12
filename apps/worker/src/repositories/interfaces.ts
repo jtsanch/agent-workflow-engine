@@ -1,9 +1,16 @@
-import type { Job, NodeExecution, ToolInvocation } from "@personal-agent-os/shared";
+import type { Job, NodeExecution, NodeFeedback, ToolInvocation } from "@personal-agent-os/shared";
 import type { UsageTelemetry } from "../runtime/node-runner.js";
 
 export interface ClaimedRunRecord {
   runId: string;
   job: Job;
+}
+
+export class RunOwnershipLostError extends Error {
+  constructor(public readonly runId: string, message = `Run ownership lost for ${runId}`) {
+    super(message);
+    this.name = "RunOwnershipLostError";
+  }
 }
 
 export interface UsageStateRecord {
@@ -34,11 +41,18 @@ export interface FinalizeRunRecord {
 
 export interface WorkerPersistenceRepository {
   claimNextQueuedRun(): Promise<ClaimedRunRecord | null>;
+  renewRunLease(runId: string): Promise<void>;
   failRun(runId: string, errorMessage: string, completedAt?: string): Promise<void>;
   loadUsageState(userId: string): Promise<UsageStateRecord>;
   updateUsageState(userId: string, state: UsageStateRecord): Promise<void>;
   persistNodeExecutions(nodeExecutions: NodeExecution[]): Promise<void>;
-  persistToolInvocations(toolInvocations: ToolInvocation[], defaultCreatedAt: string): Promise<void>;
-  upsertJobMemories(jobId: string, memoryWrites: JobMemoryWriteRecord[], updatedAt: string): Promise<void>;
+  persistNodeFeedback(runId: string, nodeFeedback: NodeFeedback[]): Promise<void>;
+  persistToolInvocations(runId: string, toolInvocations: ToolInvocation[], defaultCreatedAt: string): Promise<void>;
+  upsertJobMemories(
+    runId: string,
+    jobId: string,
+    memoryWrites: JobMemoryWriteRecord[],
+    updatedAt: string
+  ): Promise<void>;
   finalizeRun(record: FinalizeRunRecord): Promise<void>;
 }

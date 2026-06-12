@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { Pool } from "pg";
-import type { Job, JsonObject, NodeExecution, ToolInvocation } from "@personal-agent-os/shared";
+import type { Pool, PoolClient } from "pg";
+import type { Job, JsonObject, NodeExecution, NodeFeedback, ToolInvocation } from "@personal-agent-os/shared";
 import { pquery } from "./pquery.js";
 import type {
   ClaimedRunRecord,
@@ -9,9 +9,11 @@ import type {
   UsageStateRecord,
   WorkerPersistenceRepository
 } from "../interfaces.js";
+import { RunOwnershipLostError as RunOwnershipLost } from "../interfaces.js";
 
 interface QueuedRunRow {
   run_id: string;
+  run_status: string;
   job_id: string;
   user_id: string;
   job_name: string;
@@ -37,17 +39,25 @@ function toJsonObject(value: Record<string, unknown>): JsonObject {
 }
 
 export class PostgresWorkerPersistenceRepository implements WorkerPersistenceRepository {
-  constructor(private readonly pool: Pool) {}
+  constructor(
+    private readonly pool: Pool,
+    private readonly workerId: string,
+    private readonly leaseDurationMs: number
+  ) {}
 
   async claimNextQueuedRun(): Promise<ClaimedRunRecord | null> {
     const client = await this.pool.connect();
     try {
+      const claimedAt = new Date().toISOString();
+      const leaseExpiresAt = new Date(Date.now() + this.leaseDurationMs).toISOString();
+
       await pquery(client, "begin");
       const result = await pquery<QueuedRunRow>(
         client,
         `
           select
             jr.id as run_id,
+            jr.status as run_status,
             j.id as job_id,
             j.user_id,
             j.dag_id,
@@ -60,10 +70,16 @@ export class PostgresWorkerPersistenceRepository implements WorkerPersistenceRep
           from job_runs jr
           inner join jobs j on j.id = jr.job_id
           where jr.status = 'queued'
-          order by jr.started_at asc
+             or (
+               jr.status = 'running'
+               and jr.lease_expires_at is not null
+               and jr.lease_expires_at <= $1::timestamptz
+             )
+          order by jr.queued_at asc, jr.id asc
           limit 1
           for update skip locked
-        `
+        `,
+        [claimedAt]
       );
 
       const row = result.rows[0];
@@ -73,7 +89,26 @@ export class PostgresWorkerPersistenceRepository implements WorkerPersistenceRep
         return null;
       }
 
-      await pquery(client, "update job_runs set status = 'running' where id = $1", [row.run_id]);
+      if (row.run_status === "running") {
+        await this.clearRunReplayArtifacts(client, row.run_id);
+      }
+
+      await pquery(
+        client,
+        `
+          update job_runs
+          set status = 'running',
+              claimed_at = $2::timestamptz,
+              lease_expires_at = $3::timestamptz,
+              last_heartbeat_at = $2::timestamptz,
+              claimed_by_worker_id = $4,
+              completed_at = null,
+              output = null,
+              error_message = null
+          where id = $1
+        `,
+        [row.run_id, claimedAt, leaseExpiresAt, this.workerId]
+      );
       await pquery(client, "commit");
 
       return {
@@ -98,21 +133,47 @@ export class PostgresWorkerPersistenceRepository implements WorkerPersistenceRep
     }
   }
 
-  async failRun(runId: string, errorMessage: string, completedAt?: string): Promise<void> {
-    if (completedAt) {
-      await pquery(
-        this.pool,
-        "update job_runs set status = 'failed', completed_at = $2, error_message = $3 where id = $1",
-        [runId, completedAt, errorMessage]
-      );
-      return;
-    }
-
-    await pquery(
+  async renewRunLease(runId: string): Promise<void> {
+    const heartbeatAt = new Date().toISOString();
+    const leaseExpiresAt = new Date(Date.now() + this.leaseDurationMs).toISOString();
+    const result = await pquery(
       this.pool,
-      "update job_runs set status = 'failed', error_message = $2, completed_at = now() where id = $1",
-      [runId, errorMessage]
+      `
+        update job_runs
+        set lease_expires_at = $3::timestamptz,
+            last_heartbeat_at = $2::timestamptz
+        where id = $1
+          and status = 'running'
+          and claimed_by_worker_id = $4
+      `,
+      [runId, heartbeatAt, leaseExpiresAt, this.workerId]
     );
+
+    if (result.rowCount === 0) {
+      throw new RunOwnershipLost(runId);
+    }
+  }
+
+  async failRun(runId: string, errorMessage: string, completedAt?: string): Promise<void> {
+    const finalizedAt = completedAt ?? new Date().toISOString();
+    const result = await pquery(
+      this.pool,
+      `
+        update job_runs
+        set status = 'failed',
+            completed_at = $2::timestamptz,
+            error_message = $3,
+            lease_expires_at = null
+        where id = $1
+          and status = 'running'
+          and claimed_by_worker_id = $4
+      `,
+      [runId, finalizedAt, errorMessage, this.workerId]
+    );
+
+    if (result.rowCount === 0) {
+      throw new RunOwnershipLost(runId);
+    }
   }
 
   async loadUsageState(userId: string): Promise<UsageStateRecord> {
@@ -166,13 +227,21 @@ export class PostgresWorkerPersistenceRepository implements WorkerPersistenceRep
 
   async persistNodeExecutions(nodeExecutions: NodeExecution[]): Promise<void> {
     for (const nodeExecution of nodeExecutions) {
-      await pquery(
+      const result = await pquery(
         this.pool,
         `
           insert into node_executions (
             id, job_run_id, node_id, node_type, node_version, status, input, resolved_input, output, error_message, latency_ms, token_usage, cost_usd, retry_count, started_at, completed_at
           )
-          values ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9::jsonb, $10, $11, $12, $13, $14, $15, $16)
+          select
+            $1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9::jsonb, $10, $11, $12, $13, $14, $15, $16
+          where exists (
+            select 1
+            from job_runs
+            where id = $2
+              and status = 'running'
+              and claimed_by_worker_id = $17
+          )
         `,
         [
           nodeExecution.id,
@@ -190,19 +259,70 @@ export class PostgresWorkerPersistenceRepository implements WorkerPersistenceRep
           nodeExecution.costUsd ?? null,
           nodeExecution.retryCount,
           nodeExecution.startedAt,
-          nodeExecution.completedAt ?? null
+          nodeExecution.completedAt ?? null,
+          this.workerId
         ]
       );
+
+      if (result.rowCount === 0) {
+        throw new RunOwnershipLost(nodeExecution.jobRunId);
+      }
     }
   }
 
-  async persistToolInvocations(toolInvocations: ToolInvocation[], defaultCreatedAt: string): Promise<void> {
+  async persistNodeFeedback(runId: string, nodeFeedback: NodeFeedback[]): Promise<void> {
+    for (const feedback of nodeFeedback) {
+      const result = await pquery(
+        this.pool,
+        `
+          insert into node_feedback (
+            id, node_execution_id, source_node_id, target_node_id, score, should_retry, summary, created_at
+          )
+          select
+            $1, $2, $3, $4, $5, $6, $7, $8
+          where exists (
+            select 1
+            from job_runs
+            where id = $9
+              and status = 'running'
+              and claimed_by_worker_id = $10
+          )
+        `,
+        [
+          feedback.id,
+          feedback.nodeExecutionId,
+          feedback.sourceNodeId,
+          feedback.targetNodeId || null,
+          feedback.score,
+          feedback.shouldRetry,
+          feedback.summary,
+          feedback.createdAt,
+          runId,
+          this.workerId
+        ]
+      );
+
+      if (result.rowCount === 0) {
+        throw new RunOwnershipLost(runId);
+      }
+    }
+  }
+
+  async persistToolInvocations(runId: string, toolInvocations: ToolInvocation[], defaultCreatedAt: string): Promise<void> {
     for (const invocation of toolInvocations) {
-      await pquery(
+      const result = await pquery(
         this.pool,
         `
           insert into tool_invocations (id, node_execution_id, tool_name, request, response, status, created_at)
-          values ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7)
+          select
+            $1, $2, $3, $4::jsonb, $5::jsonb, $6, $7
+          where exists (
+            select 1
+            from job_runs
+            where id = $8
+              and status = 'running'
+              and claimed_by_worker_id = $9
+          )
         `,
         [
           invocation.id,
@@ -211,19 +331,38 @@ export class PostgresWorkerPersistenceRepository implements WorkerPersistenceRep
           JSON.stringify(invocation.request),
           JSON.stringify(invocation.response ?? null),
           invocation.status,
-          invocation.createdAt ?? defaultCreatedAt
+          invocation.createdAt ?? defaultCreatedAt,
+          runId,
+          this.workerId
         ]
       );
+
+      if (result.rowCount === 0) {
+        throw new RunOwnershipLost(runId);
+      }
     }
   }
 
-  async upsertJobMemories(jobId: string, memoryWrites: JobMemoryWriteRecord[], updatedAt: string): Promise<void> {
+  async upsertJobMemories(
+    runId: string,
+    jobId: string,
+    memoryWrites: JobMemoryWriteRecord[],
+    updatedAt: string
+  ): Promise<void> {
     for (const memoryWrite of memoryWrites) {
-      await pquery(
+      const result = await pquery(
         this.pool,
         `
           insert into job_memories (id, job_id, key, value, updated_at)
-          values ($1, $2, $3, $4::jsonb, $5)
+          select
+            $1, $2, $3, $4::jsonb, $5
+          where exists (
+            select 1
+            from job_runs
+            where id = $6
+              and status = 'running'
+              and claimed_by_worker_id = $7
+          )
           on conflict (job_id, key)
           do update set value = excluded.value, updated_at = excluded.updated_at
         `,
@@ -239,9 +378,15 @@ export class PostgresWorkerPersistenceRepository implements WorkerPersistenceRep
                   nodeId: memoryWrite.nodeId
                 }
           ),
-          updatedAt
+          updatedAt,
+          runId,
+          this.workerId
         ]
       );
+
+      if (result.rowCount === 0) {
+        throw new RunOwnershipLost(runId);
+      }
     }
   }
 
@@ -308,24 +453,44 @@ export class PostgresWorkerPersistenceRepository implements WorkerPersistenceRep
       }
 
       if (record.jobStatus === "succeeded") {
-        await pquery(
+        const updateResult = await pquery(
           client,
           `
             update job_runs
             set status = 'succeeded',
-                completed_at = $2,
+                completed_at = $2::timestamptz,
                 output = $3::jsonb,
-                error_message = null
+                error_message = null,
+                lease_expires_at = null
             where id = $1
+              and status = 'running'
+              and claimed_by_worker_id = $4
           `,
-          [record.runId, record.completedAt, JSON.stringify(record.finalOutput ?? null)]
+          [record.runId, record.completedAt, JSON.stringify(record.finalOutput ?? null), this.workerId]
         );
+
+        if (updateResult.rowCount === 0) {
+          throw new RunOwnershipLost(record.runId);
+        }
       } else {
-        await pquery(
+        const updateResult = await pquery(
           client,
-          "update job_runs set status = 'failed', completed_at = $2, error_message = $3 where id = $1",
-          [record.runId, record.completedAt, record.errorMessage]
+          `
+            update job_runs
+            set status = 'failed',
+                completed_at = $2::timestamptz,
+                error_message = $3,
+                lease_expires_at = null
+            where id = $1
+              and status = 'running'
+              and claimed_by_worker_id = $4
+          `,
+          [record.runId, record.completedAt, record.errorMessage, this.workerId]
         );
+
+        if (updateResult.rowCount === 0) {
+          throw new RunOwnershipLost(record.runId);
+        }
       }
 
       await pquery(client, "commit");
@@ -335,5 +500,35 @@ export class PostgresWorkerPersistenceRepository implements WorkerPersistenceRep
     } finally {
       client.release();
     }
+  }
+
+  private async clearRunReplayArtifacts(client: Pool | PoolClient, runId: string): Promise<void> {
+    await pquery(
+      client,
+      `
+        delete from tool_invocations
+        where node_execution_id in (
+          select id
+          from node_executions
+          where job_run_id = $1
+        )
+      `,
+      [runId]
+    );
+
+    await pquery(
+      client,
+      `
+        delete from node_feedback
+        where node_execution_id in (
+          select id
+          from node_executions
+          where job_run_id = $1
+        )
+      `,
+      [runId]
+    );
+
+    await pquery(client, "delete from node_executions where job_run_id = $1", [runId]);
   }
 }

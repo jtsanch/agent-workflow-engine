@@ -34,7 +34,7 @@ async function startHandlerServer(): Promise<{
   process.env.CLERK_SECRET_KEY = "sk_test_example";
   process.env.CLERK_PUBLISHABLE_KEY = "pk_test_example";
 
-  const module = await import("../../api/[[...route]].js");
+  const module = await import("../../api/index.js");
   const server = createServer((request, response) => {
     void module.default(request, response);
   });
@@ -80,9 +80,9 @@ describe("Vercel API entrypoint", () => {
   it("serves Fastify routes through the default export handler", async () => {
     const { baseUrl } = await startHandlerServer();
 
-    const healthResponse = await fetch(`${baseUrl}/api/health`);
-    const rootResponse = await fetch(`${baseUrl}/api/`);
-    const faviconResponse = await fetch(`${baseUrl}/api/favicon.ico`);
+    const healthResponse = await fetch(`${baseUrl}/health`);
+    const rootResponse = await fetch(`${baseUrl}/`);
+    const faviconResponse = await fetch(`${baseUrl}/favicon.ico`);
 
     expect(healthResponse.status).toBe(200);
     expect(await healthResponse.json()).toEqual({ ok: true, service: "api" });

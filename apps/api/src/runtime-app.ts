@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { createAppContext } from "./app-context.js";
-import { buildApp } from "./app.js";
+import { buildApp } from "./build-app.js";
 import { loadConfig, type AppConfig } from "./config/config.js";
 
 export async function createConfiguredApp(env: NodeJS.ProcessEnv = process.env): Promise<{

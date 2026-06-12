@@ -1,17 +1,21 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { FastifyInstance } from "fastify";
 import "dotenv/config";
-import { createConfiguredApp } from "../src/runtime-app.js";
+import { createAppContext } from "../src/app-context.js";
+import { buildApp } from "../src/build-app.js";
+import { loadConfig } from "../src/config/config.js";
 
 let appPromise: Promise<FastifyInstance> | null = null;
 
 function getApp(): Promise<FastifyInstance> {
   if (!appPromise) {
-    appPromise = createConfiguredApp()
-      .then(async ({ app }) => {
+    appPromise = (async () => {
+      const config = loadConfig();
+      const context = createAppContext(config);
+      const app = await buildApp(context);
         await app.ready();
         return app;
-      })
+      })()
       .catch((error) => {
         appPromise = null;
         throw error;

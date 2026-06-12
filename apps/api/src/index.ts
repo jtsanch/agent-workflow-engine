@@ -1,11 +1,15 @@
 import "dotenv/config";
 import { createLogger, createMetrics } from "@personal-agent-os/observability";
-import { createConfiguredApp } from "./runtime-app.js";
+import { createAppContext } from "./app-context.js";
+import { buildApp } from "./build-app.js";
+import { loadConfig } from "./config/config.js";
 
 async function main() {
   const logger = createLogger("api");
   const metrics = createMetrics();
-  const { app, config } = await createConfiguredApp();
+  const config = loadConfig();
+  const context = createAppContext(config);
+  const app = await buildApp(context);
 
   await app.listen({
     port: config.port,

@@ -34,7 +34,7 @@ async function startHandlerServer(): Promise<{
   process.env.CLERK_SECRET_KEY = "sk_test_example";
   process.env.CLERK_PUBLISHABLE_KEY = "pk_test_example";
 
-  const module = await import("../../api/[...route].js");
+  const module = await import("../../api/[[...route]].js");
   const server = createServer((request, response) => {
     void module.default(request, response);
   });

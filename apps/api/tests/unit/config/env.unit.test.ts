@@ -48,6 +48,25 @@ describe("loadConfig", () => {
     ]);
   });
 
+  it("normalizes configured origins to canonical URL origins", () => {
+    const config = loadConfig({
+      PORT: "4200",
+      NODE_ENV: "development",
+      DB_DRIVER: "postgres",
+      DATABASE_URL: "postgres://postgres:postgres@localhost:5433/personal_agent_os",
+      API_CORS_ORIGIN: "https://agent-workflow-engine-web.vercel.app/, http://localhost:5173/path",
+      AWS_REGION: "us-west-2",
+      DEFAULT_TIMEZONE: "America/Los_Angeles",
+      CLERK_SECRET_KEY: "sk_test_example",
+      CLERK_PUBLISHABLE_KEY: "pk_test_example"
+    });
+
+    expect(config.apiCorsOrigin).toEqual([
+      "https://agent-workflow-engine-web.vercel.app",
+      "http://localhost:5173"
+    ]);
+  });
+
   it("fails fast when API_CORS_ORIGIN is missing", () => {
     expect(() =>
       loadConfig({
@@ -71,6 +90,22 @@ describe("loadConfig", () => {
         DB_DRIVER: "postgres",
         DATABASE_URL: "postgres://postgres:postgres@localhost:5433/personal_agent_os",
         API_CORS_ORIGIN: " ,  , ",
+        AWS_REGION: "us-west-2",
+        DEFAULT_TIMEZONE: "America/Los_Angeles",
+        CLERK_SECRET_KEY: "sk_test_example",
+        CLERK_PUBLISHABLE_KEY: "pk_test_example"
+      })
+    ).toThrow("API environment validation failed");
+  });
+
+  it("fails fast when API_CORS_ORIGIN contains an invalid URL", () => {
+    expect(() =>
+      loadConfig({
+        PORT: "4200",
+        NODE_ENV: "development",
+        DB_DRIVER: "postgres",
+        DATABASE_URL: "postgres://postgres:postgres@localhost:5433/personal_agent_os",
+        API_CORS_ORIGIN: "not-a-url",
         AWS_REGION: "us-west-2",
         DEFAULT_TIMEZONE: "America/Los_Angeles",
         CLERK_SECRET_KEY: "sk_test_example",

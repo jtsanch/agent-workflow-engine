@@ -22,7 +22,17 @@ const schema = z.object({
         return z.NEVER;
       }
 
-      return origins;
+      return origins.map((origin) => {
+        try {
+          return new URL(origin).origin;
+        } catch {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `API_CORS_ORIGIN contains an invalid URL: ${origin}`
+          });
+          return z.NEVER;
+        }
+      });
     }),
   AWS_REGION: z.string().default("us-west-2"),
   DEFAULT_TIMEZONE: z.string().default("America/Los_Angeles"),

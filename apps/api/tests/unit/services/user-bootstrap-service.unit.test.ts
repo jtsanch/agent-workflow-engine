@@ -22,17 +22,20 @@ type ExistingDbUser = {
 
 function createDatabase(findFirstResults: Array<ExistingDbUser | null>) {
   const inserted: Array<{ table: unknown; values: Record<string, unknown> }> = [];
-  const findFirst = vi.fn();
+  const select = vi.fn();
   for (const result of findFirstResults) {
-    findFirst.mockResolvedValueOnce(result);
+    select.mockImplementationOnce(() => ({
+      from: vi.fn(() => ({
+        where: vi.fn(() => ({
+          limit: vi.fn(async () => (result ? [result] : []))
+        })),
+        limit: vi.fn(async () => (result ? [result] : []))
+      }))
+    }));
   }
 
   const tx = {
-    query: {
-      usersTable: {
-        findFirst
-      }
-    },
+    select,
     insert: vi.fn((table: unknown) => ({
       values: vi.fn(async (values: Record<string, unknown>) => {
         inserted.push({ table, values });

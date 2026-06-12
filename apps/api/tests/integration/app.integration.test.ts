@@ -57,8 +57,52 @@ describe("API integration", () => {
     });
   });
 
+  it("serves root status, empty favicon responses, and the shared not-found payload", async () => {
+    app = await buildApp(createInMemoryAppContext());
+
+    const rootResponse = await app.inject({ method: "GET", url: "/" });
+    const faviconIcoResponse = await app.inject({ method: "GET", url: "/favicon.ico" });
+    const faviconPngResponse = await app.inject({ method: "GET", url: "/favicon.png" });
+    const missingResponse = await app.inject({ method: "GET", url: "/missing-route" });
+
+    expect(rootResponse.statusCode).toBe(200);
+    expect(rootResponse.json()).toEqual({
+      service: "agent-workflow-engine-api",
+      status: "ok"
+    });
+
+    expect(faviconIcoResponse.statusCode).toBe(204);
+    expect(faviconIcoResponse.body).toBe("");
+
+    expect(faviconPngResponse.statusCode).toBe(204);
+    expect(faviconPngResponse.body).toBe("");
+
+    expect(missingResponse.statusCode).toBe(404);
+    expect(missingResponse.json()).toEqual({
+      error: "Not Found"
+    });
+  });
+
+  it("returns a structured 500 response for unhandled exceptions", async () => {
+    app = await buildApp(createInMemoryAppContext());
+    app.get("/boom", async () => {
+      throw new Error("boom");
+    });
+
+    const response = await app.inject({ method: "GET", url: "/boom" });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toEqual({
+      error: {
+        code: "internal_error",
+        message: "boom",
+        details: undefined
+      }
+    });
+  });
+
   it("applies credentialed CORS for the configured frontend origin", async () => {
-    app = await buildApp(createInMemoryAppContext({ apiCorsOrigin: "http://localhost:5173" }));
+    app = await buildApp(createInMemoryAppContext({ apiCorsOrigin: ["http://localhost:5173"] }));
 
     const response = await app.inject({
       method: "OPTIONS",
@@ -71,6 +115,27 @@ describe("API integration", () => {
 
     expect(response.statusCode).toBe(204);
     expect(response.headers["access-control-allow-origin"]).toBe("http://localhost:5173");
+    expect(response.headers["access-control-allow-credentials"]).toBe("true");
+  });
+
+  it("accepts any configured origin from a multi-origin CORS list", async () => {
+    app = await buildApp(
+      createInMemoryAppContext({
+        apiCorsOrigin: ["http://localhost:5173", "https://app.example.com"]
+      })
+    );
+
+    const response = await app.inject({
+      method: "OPTIONS",
+      url: "/health",
+      headers: {
+        origin: "https://app.example.com",
+        "access-control-request-method": "GET"
+      }
+    });
+
+    expect(response.statusCode).toBe(204);
+    expect(response.headers["access-control-allow-origin"]).toBe("https://app.example.com");
     expect(response.headers["access-control-allow-credentials"]).toBe("true");
   });
 

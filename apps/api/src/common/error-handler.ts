@@ -5,10 +5,7 @@ import { AppError, toAppError } from "./errors.js";
 export function registerErrorHandlers(app: FastifyInstance): void {
   app.setNotFoundHandler(async (_request: FastifyRequest, reply: FastifyReply) => {
     await reply.status(404).send({
-      error: {
-        code: "not_found",
-        message: "Route not found"
-      }
+      error: "Not Found"
     });
   });
 
@@ -25,6 +22,15 @@ export function registerErrorHandlers(app: FastifyInstance): void {
     }
 
     const appError = toAppError(error);
+
+    if (appError.statusCode >= 500) {
+      if (error instanceof Error) {
+        console.error(error.stack ?? error.message);
+      } else {
+        console.error("Unhandled API error", error);
+      }
+    }
+
     await reply.status(appError.statusCode).send({
       error: {
         code: appError.code,

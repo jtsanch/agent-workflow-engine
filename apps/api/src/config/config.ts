@@ -5,7 +5,25 @@ const schema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   DB_DRIVER: z.enum(["memory", "postgres"]).default("memory"),
   DATABASE_URL: z.string().default("postgres://postgres:postgres@localhost:5433/personal_agent_os"),
-  API_CORS_ORIGIN: z.string().min(1),
+  API_CORS_ORIGIN: z
+    .string()
+    .min(1)
+    .transform((value, context) => {
+      const origins = value
+        .split(",")
+        .map((origin) => origin.trim())
+        .filter((origin) => origin.length > 0);
+
+      if (origins.length === 0) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "API_CORS_ORIGIN must contain at least one origin"
+        });
+        return z.NEVER;
+      }
+
+      return origins;
+    }),
   AWS_REGION: z.string().default("us-west-2"),
   DEFAULT_TIMEZONE: z.string().default("America/Los_Angeles"),
   CLERK_SECRET_KEY: z.string().min(1),
@@ -17,7 +35,7 @@ export type AppConfig = {
   env: "development" | "test" | "production";
   dbDriver: "memory" | "postgres";
   databaseUrl: string;
-  apiCorsOrigin: string;
+  apiCorsOrigin: string[];
   awsRegion: string;
   defaultTimezone: string;
   clerkSecretKey: string;

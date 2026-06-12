@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { eq } from "drizzle-orm";
 import type { UserRecord } from "../db/database.js";
 import type { PostgresDatabase } from "../db/database.js";
 import {
@@ -19,31 +20,37 @@ export interface BootstrapUserInput {
   now: string;
 }
 
+function mapUserRow(row: typeof usersTable.$inferSelect): UserRecord {
+  return {
+    id: row.id,
+    email: row.email,
+    firstName: row.firstName ?? null,
+    lastName: row.lastName ?? null,
+    clerkUserId: row.clerkUserId,
+    status: row.status as UserRecord["status"],
+    role: row.role as UserRecord["role"],
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    lastLoginAt: row.lastLoginAt?.toISOString()
+  };
+}
+
 export class UserBootstrapService {
   constructor(private readonly database: PostgresDatabase) {}
 
   async bootstrapUser(input: BootstrapUserInput): Promise<UserRecord> {
     return this.database.db.transaction(async (tx) => {
-      const existingUser = await tx.query.usersTable.findFirst({
-        where: (users, { eq }) => eq(users.clerkUserId, input.clerkUserId)
-      });
+      const [existingUser] = await tx
+        .select()
+        .from(usersTable)
+        .where(eq(usersTable.clerkUserId, input.clerkUserId))
+        .limit(1);
 
       if (existingUser) {
-        return {
-          id: existingUser.id,
-          email: existingUser.email,
-          firstName: existingUser.firstName ?? null,
-          lastName: existingUser.lastName ?? null,
-          clerkUserId: existingUser.clerkUserId,
-          status: existingUser.status as UserRecord["status"],
-          role: existingUser.role as UserRecord["role"],
-          createdAt: existingUser.createdAt.toISOString(),
-          updatedAt: existingUser.updatedAt.toISOString(),
-          lastLoginAt: existingUser.lastLoginAt?.toISOString()
-        };
+        return mapUserRow(existingUser);
       }
 
-      const firstExistingUser = await tx.query.usersTable.findFirst();
+      const [firstExistingUser] = await tx.select({ id: usersTable.id }).from(usersTable).limit(1);
       const role: UserRecord["role"] = firstExistingUser ? "user" : "admin";
       const status: UserRecord["status"] = firstExistingUser ? "disabled" : "active";
       const userId = randomUUID();

@@ -8,7 +8,14 @@ export async function createHttpApp(config: Pick<AppConfig, "apiCorsOrigin">) {
   });
 
   await app.register(cors, {
-    origin: config.apiCorsOrigin,
+    origin(origin, callback) {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+
+      callback(null, config.apiCorsOrigin.includes(origin));
+    },
     credentials: true
   });
 

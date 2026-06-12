@@ -64,10 +64,13 @@ export class JobsService {
       updatedAt: now
     };
 
-    const alertPreferences: AlertPreference[] = input.alertPreferences.map((preference) => ({
+    const alertPreferences: AlertPreference[] = input.alertPreferences.map((preference): AlertPreference => ({
         id: createId("alert"),
         jobId: job.id,
-        ...preference
+        channel: preference.channel,
+        destination: preference.destination,
+        onSuccess: preference.onSuccess,
+        onFailure: preference.onFailure
       }));
 
     await this.jobRepository.createWithRelations(job, schedule, alertPreferences);

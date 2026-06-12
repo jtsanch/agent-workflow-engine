@@ -14,5 +14,4 @@ RUN pnpm install --filter @personal-agent-os/api... --frozen-lockfile=false
 COPY . .
 RUN pnpm --filter @personal-agent-os/api build
 
-CMD ["node", "apps/api/dist/start.js"]
-
+CMD ["node", "apps/api/dist/index.js"]

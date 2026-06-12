@@ -12,7 +12,6 @@ export function createInMemoryAppContext(overrides: Partial<AppConfig> = {}): Ap
     awsRegion: "us-west-2",
     defaultTimezone: "America/Los_Angeles",
     clerkSecretKey: "sk_test_example",
-    clerkPublishableKey: "pk_test_example",
     ...overrides
   });
 }

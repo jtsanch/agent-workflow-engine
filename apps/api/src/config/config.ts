@@ -36,8 +36,7 @@ const schema = z.object({
     }),
   AWS_REGION: z.string().default("us-west-2"),
   DEFAULT_TIMEZONE: z.string().default("America/Los_Angeles"),
-  CLERK_SECRET_KEY: z.string().min(1),
-  CLERK_PUBLISHABLE_KEY: z.string().min(1)
+  CLERK_SECRET_KEY: z.string().min(1)
 });
 
 export type AppConfig = {
@@ -49,10 +48,29 @@ export type AppConfig = {
   awsRegion: string;
   defaultTimezone: string;
   clerkSecretKey: string;
-  clerkPublishableKey: string;
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
+  const productionConfigErrors: string[] = [];
+
+  if (env.NODE_ENV === "production") {
+    if (!env.DB_DRIVER) {
+      productionConfigErrors.push("DB_DRIVER must be explicitly set in production");
+    } else if (env.DB_DRIVER !== "postgres") {
+      productionConfigErrors.push("DB_DRIVER must be 'postgres' in production");
+    }
+
+    if (!env.DATABASE_URL) {
+      productionConfigErrors.push("DATABASE_URL must be explicitly set in production");
+    }
+  }
+
+  if (productionConfigErrors.length > 0) {
+    console.error("Invalid API environment variables");
+    console.error({ production: productionConfigErrors });
+    throw new Error("API environment validation failed");
+  }
+
   const parsed = schema.safeParse(env);
 
   if (!parsed.success) {
@@ -71,7 +89,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     apiCorsOrigin: data.API_CORS_ORIGIN,
     awsRegion: data.AWS_REGION,
     defaultTimezone: data.DEFAULT_TIMEZONE,
-    clerkSecretKey: data.CLERK_SECRET_KEY,
-    clerkPublishableKey: data.CLERK_PUBLISHABLE_KEY
+    clerkSecretKey: data.CLERK_SECRET_KEY
   });
 }

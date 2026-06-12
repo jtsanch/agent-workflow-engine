@@ -8,7 +8,7 @@ export const jobRuns = {
   executedByType: text("executed_by_type").notNull().default("user"),
   status: text("status").notNull(),
   triggerSource: text("trigger_source").notNull(),
-  queuedAt: timestamp("queued_at", { withTimezone: true }),
+  queuedAt: timestamp("queued_at", { withTimezone: true }).notNull(),
   claimedAt: timestamp("claimed_at", { withTimezone: true }),
   leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
   lastHeartbeatAt: timestamp("last_heartbeat_at", { withTimezone: true }),

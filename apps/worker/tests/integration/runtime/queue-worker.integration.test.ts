@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { NodeFeedback } from "@personal-agent-os/shared";
+import type { NodeExecution, NodeFeedback } from "@personal-agent-os/shared";
 
 vi.mock("../../../src/runtime/job-runner.js", () => ({
   runJob: vi.fn()
 }));
 
 import { processNextQueuedRun } from "../../../src/runtime/queue-worker.js";
+import { DAGExecutionError } from "../../../src/runtime/dag-engine.js";
 import { runJob } from "../../../src/runtime/job-runner.js";
 import type {
   ClaimedRunRecord,
@@ -69,6 +70,7 @@ class FakeWorkerPersistenceRepository implements WorkerPersistenceRepository {
     usageEvents: FakeUsageEvent[];
     nodeFeedback: NodeFeedback[];
     loseOwnershipOnRenewRuns: Set<string>;
+    loseOwnershipOnPersistNodeFeedbackRuns: Set<string>;
   };
 
   constructor(state: FakeWorkerPersistenceRepository["state"]) {
@@ -169,6 +171,14 @@ class FakeWorkerPersistenceRepository implements WorkerPersistenceRepository {
   }
 
   async persistNodeFeedback(_runId: string, nodeFeedback: NodeFeedback[]): Promise<void> {
+    if (this.state.loseOwnershipOnPersistNodeFeedbackRuns.has(_runId)) {
+      const run = this.state.jobRuns.find((candidate) => candidate.id === _runId);
+      if (run) {
+        run.claimedByWorkerId = "worker_other";
+      }
+      throw new LostOwnershipError(_runId);
+    }
+
     this.state.nodeFeedback.push(...nodeFeedback);
   }
 
@@ -270,6 +280,7 @@ function createRepositoryState(
     usageEvents: [],
     nodeFeedback: [],
     loseOwnershipOnRenewRuns: new Set<string>(),
+    loseOwnershipOnPersistNodeFeedbackRuns: new Set<string>(),
     ...overrides
   };
 }
@@ -511,6 +522,58 @@ describe("queue-worker integration", () => {
       status: "running",
       claimedByWorkerId: "worker_other"
     });
+    expect(repository.state.usageEvents).toEqual([]);
+  });
+
+  it("hands off cleanly when lease ownership is lost during partial failure telemetry persistence", async () => {
+    const failedNodeExecution: NodeExecution = {
+      id: "nodeexec_failed",
+      jobRunId: "run_1",
+      nodeId: "draftPlan",
+      nodeVersion: "1.0.0",
+      nodeType: "transform",
+      status: "failed",
+      resolvedInput: {},
+      output: {
+        data: {
+          errorMessage: "draft failed"
+        },
+        artifacts: []
+      },
+      errorMessage: "draft failed",
+      latencyMs: 0,
+      tokenUsage: 0,
+      retryCount: 0,
+      startedAt: "2026-05-02T12:00:00.000Z",
+      completedAt: "2026-05-02T12:00:00.000Z"
+    };
+    const failedNodeFeedback: NodeFeedback = {
+      id: "feedback_failed",
+      nodeExecutionId: failedNodeExecution.id,
+      sourceNodeId: "validatePlan",
+      targetNodeId: "draftPlan",
+      score: 0,
+      shouldRetry: true,
+      summary: "Needs revision",
+      createdAt: "2026-05-02T12:00:00.000Z"
+    };
+
+    runJobMock.mockRejectedValueOnce(
+      new DAGExecutionError("draft failed", [failedNodeExecution], [failedNodeFeedback])
+    );
+
+    const repository = new FakeWorkerPersistenceRepository(
+      createRepositoryState({
+        loseOwnershipOnPersistNodeFeedbackRuns: new Set(["run_1"])
+      })
+    );
+
+    await expect(processNextQueuedRun(repository)).resolves.toBe(true);
+    expect(repository.state.jobRuns[0]).toMatchObject({
+      status: "running",
+      claimedByWorkerId: "worker_other"
+    });
+    expect(repository.state.nodeFeedback).toEqual([]);
     expect(repository.state.usageEvents).toEqual([]);
   });
 

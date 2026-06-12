@@ -25,4 +25,16 @@ describe("loadWorkerConfig", () => {
       workerShutdownGraceMs: 60000
     });
   });
+
+  it("rejects a heartbeat interval that is not shorter than the lease duration", () => {
+    expect(() =>
+      loadWorkerConfig({
+        NODE_ENV: "development",
+        DB_DRIVER: "postgres",
+        DATABASE_URL: "postgres://postgres:postgres@localhost:5433/personal_agent_os",
+        WORKER_LEASE_DURATION_MS: "10000",
+        WORKER_HEARTBEAT_INTERVAL_MS: "10000"
+      })
+    ).toThrow("Worker environment validation failed");
+  });
 });

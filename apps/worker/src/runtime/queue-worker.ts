@@ -29,13 +29,13 @@ export async function processNextQueuedRun(
   }
 
   const { job, runId } = claimed;
-  const heartbeat = startLeaseHeartbeat(persistence, runId, options.heartbeatIntervalMs ?? 10000);
+  const leaseHeartbeat = startLeaseHeartbeat(persistence, runId, options.heartbeatIntervalMs ?? 10000);
   const agentDefinition = seedAgentDefinitions.find(
     (agent) => agent.dag.id === job.dagId || agent.key === job.agentDefinitionKey
   );
   if (!agentDefinition) {
     await failClaimedRun(persistence, runId, `Unknown workflow definition for dag: ${job.dagId}`);
-    await stopHeartbeat(heartbeat, runId);
+    await stopHeartbeat(leaseHeartbeat, runId);
     return true;
   }
 
@@ -44,12 +44,15 @@ export async function processNextQueuedRun(
   let finalOutput: unknown = null;
   let errorMessage: string | null = null;
   let usageEvents: Awaited<ReturnType<typeof runJob>>["usageEvents"] = [];
-  let shouldFinalize = true;
+  // This flag is flipped off when the worker no longer owns the run.
+  // Once ownership is lost, this iteration should stop writing and let the
+  // newer owner continue the replay/recovery flow.
+  let canFinalizeClaimedRun = true;
 
   try {
     const now = new Date().toISOString();
     const usageState = await resetUsageCountersIfNeeded(persistence, job.userId, now);
-    heartbeat.assertOwned();
+    leaseHeartbeat.assertOwned();
     if (isQuotaExceeded(usageState)) {
       jobStatus = "failed";
       errorMessage = "Quota exceeded";
@@ -57,7 +60,7 @@ export async function processNextQueuedRun(
     }
 
     const executionResult = await runJob(job);
-    heartbeat.assertOwned();
+    leaseHeartbeat.assertOwned();
     completedAt = new Date().toISOString();
     finalOutput = executionResult.finalOutput;
     usageEvents = executionResult.usageEvents;
@@ -69,14 +72,14 @@ export async function processNextQueuedRun(
       }))
     );
     await persistence.persistNodeFeedback(runId, executionResult.nodeFeedback);
-    heartbeat.assertOwned();
+    leaseHeartbeat.assertOwned();
     await persistence.persistToolInvocations(runId, executionResult.toolInvocations, completedAt);
-    heartbeat.assertOwned();
+    leaseHeartbeat.assertOwned();
     await persistence.upsertJobMemories(runId, job.id, executionResult.memoryWrites, completedAt);
   } catch (error) {
     if (error instanceof RunOwnershipLostError) {
-      shouldFinalize = false;
-      logger.warn("Skipping finalization because run ownership was lost", { runId });
+      canFinalizeClaimedRun = false;
+      logger.warn("Stopping run cleanup because lease ownership was lost", { runId });
       return true;
     }
 
@@ -85,20 +88,30 @@ export async function processNextQueuedRun(
     console.error(`Error executing job run ${runId}:`, error);
 
     if (error instanceof DAGExecutionError) {
-      await persistence.persistNodeExecutions(
-        error.nodeExecutions.map((nodeExecution) => ({
-          ...nodeExecution,
-          jobRunId: runId
-        }))
-      );
-      await persistence.persistNodeFeedback(runId, error.nodeFeedback);
+      try {
+        await persistence.persistNodeExecutions(
+          error.nodeExecutions.map((nodeExecution) => ({
+            ...nodeExecution,
+            jobRunId: runId
+          }))
+        );
+        await persistence.persistNodeFeedback(runId, error.nodeFeedback);
+      } catch (persistenceError) {
+        if (persistenceError instanceof RunOwnershipLostError) {
+          canFinalizeClaimedRun = false;
+          logger.warn("Stopping partial failure telemetry persistence because lease ownership was lost", { runId });
+          return true;
+        }
+
+        throw persistenceError;
+      }
     }
   } finally {
-    if (!(await stopHeartbeat(heartbeat, runId))) {
-      shouldFinalize = false;
+    if (!(await stopHeartbeat(leaseHeartbeat, runId))) {
+      canFinalizeClaimedRun = false;
     }
 
-    if (shouldFinalize) {
+    if (canFinalizeClaimedRun) {
       try {
         await persistence.finalizeRun({
           runId,
@@ -112,7 +125,7 @@ export async function processNextQueuedRun(
         });
       } catch (transactionError) {
         if (transactionError instanceof RunOwnershipLostError) {
-          logger.warn("Skipping finalization because run ownership was lost", { runId });
+          logger.warn("Skipping run finalization because lease ownership was lost", { runId });
         } else {
           console.error(`Error in job completion transaction for run ${runId}:`, transactionError);
         }
@@ -253,7 +266,7 @@ async function stopHeartbeat(heartbeat: LeaseHeartbeatController, runId: string)
     return true;
   } catch (error) {
     if (error instanceof RunOwnershipLostError) {
-      logger.warn("Stopping work because run ownership was lost", { runId });
+      logger.warn("Stopping work because lease ownership was lost", { runId });
       return false;
     }
 

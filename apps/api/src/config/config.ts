@@ -5,6 +5,7 @@ const schema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   DB_DRIVER: z.enum(["memory", "postgres"]).default("memory"),
   DATABASE_URL: z.string().default("postgres://postgres:postgres@localhost:5433/personal_agent_os"),
+  API_CORS_ORIGIN: z.string().min(1),
   AWS_REGION: z.string().default("us-west-2"),
   DEFAULT_TIMEZONE: z.string().default("America/Los_Angeles"),
   CLERK_SECRET_KEY: z.string().min(1),
@@ -16,6 +17,7 @@ export type AppConfig = {
   env: "development" | "test" | "production";
   dbDriver: "memory" | "postgres";
   databaseUrl: string;
+  apiCorsOrigin: string;
   awsRegion: string;
   defaultTimezone: string;
   clerkSecretKey: string;
@@ -38,6 +40,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     env: data.NODE_ENV,
     dbDriver: data.DB_DRIVER,
     databaseUrl: data.DATABASE_URL,
+    apiCorsOrigin: data.API_CORS_ORIGIN,
     awsRegion: data.AWS_REGION,
     defaultTimezone: data.DEFAULT_TIMEZONE,
     clerkSecretKey: data.CLERK_SECRET_KEY,

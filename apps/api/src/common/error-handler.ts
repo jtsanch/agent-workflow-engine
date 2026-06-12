@@ -5,10 +5,7 @@ import { AppError, toAppError } from "./errors.js";
 export function registerErrorHandlers(app: FastifyInstance): void {
   app.setNotFoundHandler(async (_request: FastifyRequest, reply: FastifyReply) => {
     await reply.status(404).send({
-      error: {
-        code: "not_found",
-        message: "Route not found"
-      }
+      error: "Not Found"
     });
   });
 

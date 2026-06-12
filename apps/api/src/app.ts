@@ -4,6 +4,7 @@ import { registerAuthMiddleware } from "./common/auth-middleware.js";
 import { registerErrorHandlers } from "./common/error-handler.js";
 import type { AppContext } from "./app-context.js";
 import { registerHealthController } from "./modules/health/controller.js";
+import { registerRootController } from "./modules/root/controller.js";
 import { registerAgentsController } from "./modules/agents/controller.js";
 import { registerAuthController } from "./modules/auth/controller.js";
 import { registerJobsController } from "./modules/jobs/controller.js";
@@ -16,6 +17,7 @@ import { registerAdminController } from "./modules/admin/controller.js";
 export async function buildApp(context: AppContext): Promise<FastifyInstance> {
   const app = await createHttpApp(context.config);
 
+  registerRootController(app);
   registerHealthController(app, context.healthService);
 
   await app.register(async (protectedApp) => {

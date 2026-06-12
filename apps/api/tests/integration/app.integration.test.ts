@@ -57,6 +57,32 @@ describe("API integration", () => {
     });
   });
 
+  it("serves root status, empty favicon responses, and the shared not-found payload", async () => {
+    app = await buildApp(createInMemoryAppContext());
+
+    const rootResponse = await app.inject({ method: "GET", url: "/" });
+    const faviconIcoResponse = await app.inject({ method: "GET", url: "/favicon.ico" });
+    const faviconPngResponse = await app.inject({ method: "GET", url: "/favicon.png" });
+    const missingResponse = await app.inject({ method: "GET", url: "/missing-route" });
+
+    expect(rootResponse.statusCode).toBe(200);
+    expect(rootResponse.json()).toEqual({
+      service: "agent-workflow-engine-api",
+      status: "ok"
+    });
+
+    expect(faviconIcoResponse.statusCode).toBe(204);
+    expect(faviconIcoResponse.body).toBe("");
+
+    expect(faviconPngResponse.statusCode).toBe(204);
+    expect(faviconPngResponse.body).toBe("");
+
+    expect(missingResponse.statusCode).toBe(404);
+    expect(missingResponse.json()).toEqual({
+      error: "Not Found"
+    });
+  });
+
   it("applies credentialed CORS for the configured frontend origin", async () => {
     app = await buildApp(createInMemoryAppContext({ apiCorsOrigin: "http://localhost:5173" }));
 

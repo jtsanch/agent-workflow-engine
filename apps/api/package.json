@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "main": "dist/start.js",
+  "main": "dist/index.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "dev": "tsx watch src/start.ts",
+    "dev": "tsx watch src/index.ts",
     "migrate": "pnpm run db:migrate:local",
     "db:validate": "tsx scripts/validate-schema-drift.ts",
     "db:migrate:local": "tsx scripts/flyway.ts migrate",

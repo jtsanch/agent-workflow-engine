@@ -49,12 +49,7 @@ describe("API integration", () => {
     expect(healthResponse.statusCode).toBe(200);
     expect(healthResponse.json()).toEqual({ ok: true, service: "api" });
     expect(readyResponse.statusCode).toBe(200);
-    expect(readyResponse.json()).toEqual({
-      ok: true,
-      checks: {
-        database: "ok"
-      }
-    });
+    expect(readyResponse.json()).toEqual({ ok: true });
   });
 
   it("serves root status, empty favicon responses, and the shared not-found payload", async () => {

@@ -48,12 +48,7 @@ describe("service integration", () => {
     expect(runs[0]?.id).toBe(queuedRun.id);
     expect(runs[0]?.nodeExecutions).toEqual([]);
     expect(runs.every((run) => run.toolInvocations.length === 0)).toBe(true);
-    expect(readiness).toEqual({
-      ok: true,
-      checks: {
-        database: "ok"
-      }
-    });
+    expect(readiness).toEqual({ ok: true });
 
     await context.close();
   });

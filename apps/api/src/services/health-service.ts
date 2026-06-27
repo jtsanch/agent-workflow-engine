@@ -3,7 +3,7 @@ export interface ReadinessStatus {
 }
 
 export class HealthService {
-  async getReadiness(): Promise<ReadinessStatus> {
+  getReadiness(): ReadinessStatus {
     return { ok: true };
   }
 }

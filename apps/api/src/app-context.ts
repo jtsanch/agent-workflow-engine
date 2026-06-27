@@ -122,7 +122,7 @@ export function createAppContext(config: AppConfig): AppContext {
     nodeFeedbackRepository
   );
   const alertsService = new AlertsService(jobRepository, alertPreferenceRepository);
-  const healthService = new HealthService(database);
+  const healthService = new HealthService();
   const searchService = new SearchService();
 
   return {

@@ -192,4 +192,120 @@ describe("RunsService", () => {
       statusCode: 404
     });
   });
+
+  it("rejects enqueueing a run for a paused job", async () => {
+    const repositories = createRepositories();
+    vi.mocked(repositories.jobRepository.findById).mockResolvedValue({
+      ...job,
+      status: "paused"
+    });
+    const runsService = new RunsService(
+      repositories.jobRepository,
+      repositories.jobRunRepository,
+      repositories.toolInvocationRepository,
+      repositories.nodeExecutionRepository,
+      repositories.nodeFeedbackRepository
+    );
+
+    await expect(runsService.enqueueRun(userContext, job.id)).rejects.toMatchObject({
+      code: "job_not_active",
+      statusCode: 422
+    });
+  });
+
+  it("rejects enqueueing a run for a disabled job", async () => {
+    const repositories = createRepositories();
+    vi.mocked(repositories.jobRepository.findById).mockResolvedValue({
+      ...job,
+      status: "disabled"
+    });
+    const runsService = new RunsService(
+      repositories.jobRepository,
+      repositories.jobRunRepository,
+      repositories.toolInvocationRepository,
+      repositories.nodeExecutionRepository,
+      repositories.nodeFeedbackRepository
+    );
+
+    await expect(runsService.enqueueRun(userContext, job.id)).rejects.toMatchObject({
+      code: "job_not_active",
+      statusCode: 422
+    });
+  });
+
+  it("returns a hydrated run scoped to the requesting user", async () => {
+    const repositories = createRepositories();
+    const run: JobRun = {
+      id: "run_owned",
+      jobId: job.id,
+      status: "succeeded",
+      triggerSource: "manual",
+      startedAt: "2026-06-07T00:00:00.000Z",
+      completedAt: "2026-06-07T00:00:05.000Z"
+    };
+    vi.mocked(repositories.jobRunRepository.findById).mockResolvedValue(run);
+    vi.mocked(repositories.jobRepository.findById).mockResolvedValue(job);
+    vi.mocked(repositories.nodeExecutionRepository.listByRunIds).mockResolvedValue([]);
+    vi.mocked(repositories.nodeFeedbackRepository.listByExecutionIds).mockResolvedValue([]);
+    vi.mocked(repositories.toolInvocationRepository.listByExecutionIds).mockResolvedValue([]);
+    const runsService = new RunsService(
+      repositories.jobRepository,
+      repositories.jobRunRepository,
+      repositories.toolInvocationRepository,
+      repositories.nodeExecutionRepository,
+      repositories.nodeFeedbackRepository
+    );
+
+    const result = await runsService.getRun(userContext, run.id);
+
+    expect(result.id).toBe(run.id);
+    expect(repositories.jobRunRepository.findById).toHaveBeenCalledWith(run.id);
+    expect(repositories.jobRepository.findById).toHaveBeenCalledWith(job.id);
+  });
+
+  it("rejects getRun for a run belonging to another user's job", async () => {
+    const repositories = createRepositories();
+    const run: JobRun = {
+      id: "run_other",
+      jobId: "job_other",
+      status: "succeeded",
+      triggerSource: "manual",
+      startedAt: "2026-06-07T00:00:00.000Z"
+    };
+    vi.mocked(repositories.jobRunRepository.findById).mockResolvedValue(run);
+    vi.mocked(repositories.jobRepository.findById).mockResolvedValue({
+      ...job,
+      id: "job_other",
+      userId: "other_user"
+    });
+    const runsService = new RunsService(
+      repositories.jobRepository,
+      repositories.jobRunRepository,
+      repositories.toolInvocationRepository,
+      repositories.nodeExecutionRepository,
+      repositories.nodeFeedbackRepository
+    );
+
+    await expect(runsService.getRun(userContext, run.id)).rejects.toMatchObject({
+      code: "run_not_found",
+      statusCode: 404
+    });
+  });
+
+  it("rejects getRun when the run does not exist", async () => {
+    const repositories = createRepositories();
+    vi.mocked(repositories.jobRunRepository.findById).mockResolvedValue(null);
+    const runsService = new RunsService(
+      repositories.jobRepository,
+      repositories.jobRunRepository,
+      repositories.toolInvocationRepository,
+      repositories.nodeExecutionRepository,
+      repositories.nodeFeedbackRepository
+    );
+
+    await expect(runsService.getRun(userContext, "missing")).rejects.toMatchObject({
+      code: "run_not_found",
+      statusCode: 404
+    });
+  });
 });

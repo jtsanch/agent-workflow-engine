@@ -142,6 +142,10 @@ function assertSupportedNodeType(node: AgentNode): void {
     case "transform":
     case "condition":
       return;
+    default: {
+      const _exhaustive: never = node;
+      throw new Error(`Unsupported node type: ${(_exhaustive as { type: string }).type}`);
+    }
   }
 }
 

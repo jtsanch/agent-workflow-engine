@@ -9,6 +9,7 @@ Built as a TypeScript monorepo with a focus on:
 - supporting scalable worker-based processing
 - maintaining clear system boundaries across services
 
+
 ## What This Demonstrates
 
 - Designing a multi-service system (API, worker, frontend)

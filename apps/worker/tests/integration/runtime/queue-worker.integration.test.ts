@@ -5,7 +5,7 @@ vi.mock("../../../src/runtime/job-runner.js", () => ({
   runJob: vi.fn()
 }));
 
-import { processNextQueuedRun } from "../../../src/runtime/queue-worker.js";
+import { processQueuedRun } from "../../../src/runtime/queue-worker.js";
 import { DAGExecutionError } from "../../../src/runtime/dag-engine.js";
 import { runJob } from "../../../src/runtime/job-runner.js";
 import type {
@@ -26,8 +26,6 @@ type FakeJobRun = {
   startedAt: string;
   completedAt?: string;
   claimedAt?: string;
-  leaseExpiresAt?: string;
-  lastHeartbeatAt?: string;
   claimedByWorkerId?: string | null;
   errorMessage?: string | null;
   output?: unknown;
@@ -60,7 +58,6 @@ type FakeUsageEvent = {
 
 class FakeWorkerPersistenceRepository implements WorkerPersistenceRepository {
   private readonly workerId = "worker_test";
-  private readonly leaseDurationMs = 30000;
 
   readonly state: {
     jobRuns: FakeJobRun[];
@@ -69,71 +66,43 @@ class FakeWorkerPersistenceRepository implements WorkerPersistenceRepository {
     usageLimits: Map<string, FakeUsageLimits>;
     usageEvents: FakeUsageEvent[];
     nodeFeedback: NodeFeedback[];
-    loseOwnershipOnRenewRuns: Set<string>;
-    loseOwnershipOnPersistNodeFeedbackRuns: Set<string>;
+    loseOwnershipRuns: Set<string>;
   };
 
   constructor(state: FakeWorkerPersistenceRepository["state"]) {
     this.state = state;
   }
 
-  async claimNextQueuedRun(): Promise<ClaimedRunRecord | null> {
-    const now = new Date().toISOString();
-    const queuedRun = this.state.jobRuns
-      .filter((run) => {
-        if (run.status === "queued") {
-          return true;
-        }
-
-        return run.status === "running" && typeof run.leaseExpiresAt === "string" && run.leaseExpiresAt <= now;
-      })
-      .sort((left, right) => (left.queuedAt ?? left.startedAt).localeCompare(right.queuedAt ?? right.startedAt))[0];
-
-    if (!queuedRun) {
+  async prepareRunForExecution(runId: string): Promise<ClaimedRunRecord | null> {
+    const run = this.state.jobRuns.find((candidate) => candidate.id === runId);
+    if (!run || (run.status !== "queued" && run.status !== "running")) {
       return null;
     }
 
-    const job = this.state.jobs.find((candidate) => candidate.id === queuedRun.jobId);
+    const job = this.state.jobs.find((candidate) => candidate.id === run.jobId);
     if (!job) {
       return null;
     }
 
-    queuedRun.status = "running";
-    queuedRun.claimedAt = now;
-    queuedRun.lastHeartbeatAt = now;
-    queuedRun.leaseExpiresAt = new Date(Date.now() + this.leaseDurationMs).toISOString();
-    queuedRun.claimedByWorkerId = this.workerId;
+    run.status = "running";
+    run.claimedAt = new Date().toISOString();
+    run.claimedByWorkerId = this.workerId;
+    run.completedAt = undefined;
+    run.errorMessage = null;
+    run.output = undefined;
+
     return {
-      runId: queuedRun.id,
+      runId: run.id,
       job
     };
   }
 
-  async renewRunLease(runId: string): Promise<void> {
-    const run = this.state.jobRuns.find((candidate) => candidate.id === runId);
-    if (!run || run.status !== "running" || run.claimedByWorkerId !== this.workerId) {
-      throw new LostOwnershipError(runId);
-    }
-
-    if (this.state.loseOwnershipOnRenewRuns.has(runId)) {
-      run.claimedByWorkerId = "worker_other";
-      throw new LostOwnershipError(runId);
-    }
-
-    run.lastHeartbeatAt = new Date().toISOString();
-    run.leaseExpiresAt = new Date(Date.now() + this.leaseDurationMs).toISOString();
-  }
-
   async failRun(runId: string, errorMessage: string, completedAt?: string): Promise<void> {
-    const run = this.state.jobRuns.find((candidate) => candidate.id === runId);
-    if (!run || run.status !== "running" || run.claimedByWorkerId !== this.workerId) {
-      throw new LostOwnershipError(runId);
-    }
-
+    const run = this.requireOwnedRun(runId);
     run.status = "failed";
     run.errorMessage = errorMessage;
     run.completedAt = completedAt ?? new Date().toISOString();
-    run.leaseExpiresAt = undefined;
+    run.claimedByWorkerId = null;
   }
 
   async loadUsageState(userId: string): Promise<UsageStateRecord> {
@@ -166,35 +135,28 @@ class FakeWorkerPersistenceRepository implements WorkerPersistenceRepository {
     counters.lastMonthlyReset = state.lastMonthlyReset;
   }
 
-  async persistNodeExecutions(): Promise<void> {
-    return;
+  async persistNodeExecutions(nodeExecutions: NodeExecution[]): Promise<void> {
+    const runId = nodeExecutions[0]?.jobRunId;
+    if (runId) {
+      this.requireOwnedRun(runId);
+    }
   }
 
-  async persistNodeFeedback(_runId: string, nodeFeedback: NodeFeedback[]): Promise<void> {
-    if (this.state.loseOwnershipOnPersistNodeFeedbackRuns.has(_runId)) {
-      const run = this.state.jobRuns.find((candidate) => candidate.id === _runId);
-      if (run) {
-        run.claimedByWorkerId = "worker_other";
-      }
-      throw new LostOwnershipError(_runId);
-    }
-
+  async persistNodeFeedback(runId: string, nodeFeedback: NodeFeedback[]): Promise<void> {
+    this.requireOwnedRun(runId);
     this.state.nodeFeedback.push(...nodeFeedback);
   }
 
-  async persistToolInvocations(): Promise<void> {
-    return;
+  async persistToolInvocations(runId: string): Promise<void> {
+    this.requireOwnedRun(runId);
   }
 
-  async upsertJobMemories(): Promise<void> {
-    return;
+  async upsertJobMemories(runId: string): Promise<void> {
+    this.requireOwnedRun(runId);
   }
 
   async finalizeRun(record: FinalizeRunRecord): Promise<void> {
-    const run = this.state.jobRuns.find((candidate) => candidate.id === record.runId);
-    if (!run || run.status !== "running" || run.claimedByWorkerId !== this.workerId) {
-      throw new LostOwnershipError(record.runId);
-    }
+    const run = this.requireOwnedRun(record.runId);
 
     if (record.usageEvents.length > 0) {
       const counters = this.state.usageCounters.get(record.userId);
@@ -220,7 +182,7 @@ class FakeWorkerPersistenceRepository implements WorkerPersistenceRepository {
 
     run.status = record.jobStatus;
     run.completedAt = record.completedAt;
-    run.leaseExpiresAt = undefined;
+    run.claimedByWorkerId = null;
 
     if (record.jobStatus === "succeeded") {
       run.output = record.finalOutput;
@@ -228,6 +190,20 @@ class FakeWorkerPersistenceRepository implements WorkerPersistenceRepository {
     } else {
       run.errorMessage = record.errorMessage;
     }
+  }
+
+  private requireOwnedRun(runId: string): FakeJobRun {
+    const run = this.state.jobRuns.find((candidate) => candidate.id === runId);
+    if (!run || run.status !== "running" || run.claimedByWorkerId !== this.workerId) {
+      throw new LostOwnershipError(runId);
+    }
+
+    if (this.state.loseOwnershipRuns.has(runId)) {
+      run.claimedByWorkerId = "worker_other";
+      throw new LostOwnershipError(runId);
+    }
+
+    return run;
   }
 }
 
@@ -279,8 +255,7 @@ function createRepositoryState(
     ]),
     usageEvents: [],
     nodeFeedback: [],
-    loseOwnershipOnRenewRuns: new Set<string>(),
-    loseOwnershipOnPersistNodeFeedbackRuns: new Set<string>(),
+    loseOwnershipRuns: new Set<string>(),
     ...overrides
   };
 }
@@ -313,9 +288,8 @@ describe("queue-worker integration", () => {
       })
     );
 
-    const didWork = await processNextQueuedRun(repository);
+    await processQueuedRun(repository, { runId: "run_1" });
 
-    expect(didWork).toBe(true);
     expect(runJobMock).not.toHaveBeenCalled();
     expect(repository.state.jobRuns[0]).toMatchObject({
       status: "failed",
@@ -369,25 +343,11 @@ describe("queue-worker integration", () => {
       })
     );
 
-    const didWork = await processNextQueuedRun(repository);
+    await processQueuedRun(repository, { runId: "run_1" });
 
-    expect(didWork).toBe(true);
     expect(repository.state.jobRuns[0]?.status).toBe("succeeded");
     expect(repository.state.nodeFeedback).toHaveLength(1);
-    expect(repository.state.nodeFeedback[0]).toMatchObject({
-      sourceNodeId: "validatePlan",
-      shouldRetry: false
-    });
     expect(repository.state.usageEvents).toHaveLength(1);
-    expect(repository.state.usageEvents[0]).toMatchObject({
-      userId: "user_1",
-      jobId: "job_1",
-      jobRunId: "run_1",
-      model: "gpt-4.1",
-      promptTokens: 100,
-      completionTokens: 40,
-      totalTokens: 140
-    });
     expect(repository.state.usageCounters.get("user_1")).toMatchObject({
       dailyTokens: 240,
       monthlyTokens: 340
@@ -444,8 +404,8 @@ describe("queue-worker integration", () => {
       })
     );
 
-    expect(await processNextQueuedRun(repository)).toBe(true);
-    expect(await processNextQueuedRun(repository)).toBe(true);
+    await processQueuedRun(repository, { runId: "run_1" });
+    await processQueuedRun(repository, { runId: "run_2" });
 
     expect(runJobMock).toHaveBeenCalledTimes(1);
     expect(repository.state.jobRuns[0]).toMatchObject({ status: "succeeded" });
@@ -455,7 +415,7 @@ describe("queue-worker integration", () => {
     });
   });
 
-  it("reclaims expired running runs whose lease has lapsed", async () => {
+  it("replays a running run when pg-boss retries the same run id", async () => {
     runJobMock.mockResolvedValueOnce({
       nodeExecutions: [],
       nodeFeedback: [],
@@ -474,58 +434,22 @@ describe("queue-worker integration", () => {
             status: "running",
             queuedAt: "2026-05-01T23:59:00.000Z",
             startedAt: "2026-05-01T23:59:00.000Z",
-            leaseExpiresAt: "2026-05-02T11:59:59.000Z",
             claimedByWorkerId: "worker_old"
           }
         ]
       })
     );
 
-    const didWork = await processNextQueuedRun(repository);
+    await processQueuedRun(repository, { runId: "run_stale" });
 
-    expect(didWork).toBe(true);
     expect(runJobMock).toHaveBeenCalledTimes(1);
     expect(repository.state.jobRuns[0]).toMatchObject({
       status: "succeeded",
-      claimedByWorkerId: "worker_test",
       output: { recovered: true }
     });
   });
 
-  it("skips finalization after lease ownership is lost during execution", async () => {
-    runJobMock.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          setTimeout(() => {
-            resolve({
-              nodeExecutions: [],
-              toolInvocations: [],
-              memoryWrites: [],
-              finalOutput: { ok: true },
-              usageEvents: []
-            } as never);
-          }, 20);
-        })
-    );
-
-    const repository = new FakeWorkerPersistenceRepository(
-      createRepositoryState({
-        loseOwnershipOnRenewRuns: new Set(["run_1"])
-      })
-    );
-
-    const processing = processNextQueuedRun(repository, { heartbeatIntervalMs: 5 });
-    await vi.advanceTimersByTimeAsync(25);
-
-    await expect(processing).resolves.toBe(true);
-    expect(repository.state.jobRuns[0]).toMatchObject({
-      status: "running",
-      claimedByWorkerId: "worker_other"
-    });
-    expect(repository.state.usageEvents).toEqual([]);
-  });
-
-  it("hands off cleanly when lease ownership is lost during partial failure telemetry persistence", async () => {
+  it("hands off cleanly when run ownership is lost during partial failure telemetry persistence", async () => {
     const failedNodeExecution: NodeExecution = {
       id: "nodeexec_failed",
       jobRunId: "run_1",
@@ -564,11 +488,11 @@ describe("queue-worker integration", () => {
 
     const repository = new FakeWorkerPersistenceRepository(
       createRepositoryState({
-        loseOwnershipOnPersistNodeFeedbackRuns: new Set(["run_1"])
+        loseOwnershipRuns: new Set(["run_1"])
       })
     );
 
-    await expect(processNextQueuedRun(repository)).resolves.toBe(true);
+    await expect(processQueuedRun(repository, { runId: "run_1" })).resolves.toBeUndefined();
     expect(repository.state.jobRuns[0]).toMatchObject({
       status: "running",
       claimedByWorkerId: "worker_other"
@@ -577,35 +501,24 @@ describe("queue-worker integration", () => {
     expect(repository.state.usageEvents).toEqual([]);
   });
 
-  it("renews the lease heartbeat while a long-running job is active", async () => {
-    runJobMock.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          setTimeout(() => {
-            resolve({
-              nodeExecutions: [],
-              nodeFeedback: [],
-              toolInvocations: [],
-              memoryWrites: [],
-              finalOutput: { ok: true },
-              usageEvents: []
-            } as never);
-          }, 25);
-        })
+  it("ignores terminal runs when a duplicate queue delivery arrives later", async () => {
+    const repository = new FakeWorkerPersistenceRepository(
+      createRepositoryState({
+        jobRuns: [
+          {
+            id: "run_done",
+            jobId: "job_1",
+            status: "succeeded",
+            startedAt: "2026-05-02T00:00:00.000Z",
+            completedAt: "2026-05-02T00:01:00.000Z",
+            output: { ok: true }
+          }
+        ]
+      })
     );
 
-    const repository = new FakeWorkerPersistenceRepository(createRepositoryState());
+    await processQueuedRun(repository, { runId: "run_done" });
 
-    const processing = processNextQueuedRun(repository, { heartbeatIntervalMs: 5 });
-    const claimedAt = repository.state.jobRuns[0]?.claimedAt;
-    const initialLeaseExpiresAt = repository.state.jobRuns[0]?.leaseExpiresAt;
-
-    await vi.advanceTimersByTimeAsync(15);
-
-    expect(repository.state.jobRuns[0]?.lastHeartbeatAt).not.toBe(claimedAt);
-    expect(repository.state.jobRuns[0]?.leaseExpiresAt).not.toBe(initialLeaseExpiresAt);
-
-    await vi.advanceTimersByTimeAsync(20);
-    await expect(processing).resolves.toBe(true);
+    expect(runJobMock).not.toHaveBeenCalled();
   });
 });

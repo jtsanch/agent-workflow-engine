@@ -1,13 +1,16 @@
 import "dotenv/config";
 import { randomUUID } from "node:crypto";
+import { setTimeout as sleep } from "node:timers/promises";
 import { Pool } from "pg";
+import { PgBoss } from "pg-boss";
 import { createLogger } from "@personal-agent-os/observability";
 import { loadWorkerConfig } from "./config/config.js";
 import { PostgresWorkerPersistenceRepository } from "./repositories/postgres/worker-persistence-repository.js";
-import { waitForActiveRun } from "./runtime/shutdown.js";
-import { processNextQueuedRun } from "./runtime/queue-worker.js";
+import { RUN_EXECUTION_QUEUE, type RunExecutionJobData } from "./run-queue.js";
+import { processQueuedRun } from "./runtime/queue-worker.js";
 
 const logger = createLogger("worker");
+const RUN_QUEUE_JOB_TIMEOUT_SECONDS = 60 * 60;
 
 async function main() {
   const config = loadWorkerConfig();
@@ -17,21 +20,72 @@ async function main() {
   }
 
   const pool = new Pool({ connectionString: config.databaseUrl });
+  const boss = new PgBoss({
+    connectionString: config.databaseUrl,
+    useListenNotify: true
+  });
   const workerId = `worker_${randomUUID()}`;
-  const persistence = new PostgresWorkerPersistenceRepository(pool, workerId, config.workerLeaseDurationMs);
+  const persistence = new PostgresWorkerPersistenceRepository(pool, workerId);
   let shutdownRequested = false;
-  let activeRun: Promise<boolean> | null = null;
   let activeShutdown: Promise<void> | null = null;
-  let sleepHandle: NodeJS.Timeout | null = null;
-  let wakeSleep: (() => void) | null = null;
 
-  logger.info("Worker polling loop started", {
-    intervalMs: config.jobPollIntervalMs,
+  boss.on("error", (error) => {
+    logger.error("Worker queue error", {
+      workerId,
+      error: error instanceof Error ? error.message : String(error)
+    });
+  });
+
+  boss.on("warning", (warning) => {
+    logger.warn("Worker queue warning", {
+      workerId,
+      ...warning
+    });
+  });
+
+  await boss.start();
+  await boss.createQueue(RUN_EXECUTION_QUEUE, {
+    notify: true,
+    retryLimit: 2,
+    retryDelay: 5,
+    retryBackoff: true,
+    heartbeatSeconds: Math.max(10, Math.ceil(config.workerLeaseDurationMs / 1000)),
+    expireInSeconds: RUN_QUEUE_JOB_TIMEOUT_SECONDS
+  });
+  await boss.updateQueue(RUN_EXECUTION_QUEUE, {
+    notify: true,
+    retryLimit: 2,
+    retryDelay: 5,
+    retryBackoff: true,
+    heartbeatSeconds: Math.max(10, Math.ceil(config.workerLeaseDurationMs / 1000)),
+    expireInSeconds: RUN_QUEUE_JOB_TIMEOUT_SECONDS
+  });
+
+  logger.info("Worker queue consumer started", {
+    pollingIntervalMs: config.jobPollIntervalMs,
     concurrency: config.workerConcurrency,
     workerId,
-    leaseDurationMs: config.workerLeaseDurationMs,
-    heartbeatIntervalMs: config.workerHeartbeatIntervalMs
+    heartbeatIntervalMs: config.workerHeartbeatIntervalMs,
+    queue: RUN_EXECUTION_QUEUE
   });
+
+  const bossWorkerId = await boss.work<RunExecutionJobData>(
+    RUN_EXECUTION_QUEUE,
+    {
+      batchSize: 1,
+      localConcurrency: config.workerConcurrency,
+      pollingIntervalSeconds: Math.max(0.5, config.jobPollIntervalMs / 1000),
+      notifyPollingIntervalSeconds: Math.max(0.5, config.jobPollIntervalMs / 1000),
+      heartbeatRefreshSeconds: Math.max(1, Math.floor(config.workerHeartbeatIntervalMs / 1000))
+    },
+    async ([job]) => {
+      if (!job) {
+        return;
+      }
+
+      await processQueuedRun(persistence, job.data);
+    }
+  );
 
   const shutdown = async (signal: string) => {
     if (activeShutdown) {
@@ -39,34 +93,14 @@ async function main() {
     }
 
     shutdownRequested = true;
-    if (sleepHandle) {
-      clearTimeout(sleepHandle);
-      sleepHandle = null;
-    }
-    wakeSleep?.();
-    wakeSleep = null;
-
     activeShutdown = (async () => {
       logger.info("Worker shutdown requested", { signal, workerId });
-
-      if (activeRun) {
-        const drained = await waitForActiveRun(activeRun, config.workerShutdownGraceMs);
-        if (!drained) {
-          logger.error("Worker shutdown grace period exceeded", {
-            signal,
-            workerId,
-            graceMs: config.workerShutdownGraceMs
-          });
-          await pool.end().catch((error) => {
-            logger.error("Worker pool close failed during forced shutdown", {
-              workerId,
-              error: error instanceof Error ? error.message : String(error)
-            });
-          });
-          process.exit(1);
-        }
-      }
-
+      await boss.offWork(RUN_EXECUTION_QUEUE, { id: bossWorkerId, wait: true });
+      await boss.stop({
+        close: true,
+        graceful: true,
+        timeout: config.workerShutdownGraceMs
+      });
       await pool.end();
       logger.info("Worker shutdown complete", { signal, workerId });
       process.exit(0);
@@ -84,26 +118,7 @@ async function main() {
   });
 
   while (!shutdownRequested) {
-    activeRun = processNextQueuedRun(persistence, {
-      heartbeatIntervalMs: config.workerHeartbeatIntervalMs
-    });
-    const didWork = await activeRun;
-    activeRun = null;
-
-    if (shutdownRequested) {
-      break;
-    }
-
-    if (!didWork) {
-      await new Promise<void>((resolve) => {
-        wakeSleep = resolve;
-        sleepHandle = setTimeout(() => {
-          sleepHandle = null;
-          wakeSleep = null;
-          resolve();
-        }, config.jobPollIntervalMs);
-      });
-    }
+    await sleep(1000);
   }
 
   if (activeShutdown) {
@@ -111,6 +126,7 @@ async function main() {
     return;
   }
 
+  await boss.stop({ close: true, graceful: true, timeout: config.workerShutdownGraceMs });
   await pool.end();
 }
 

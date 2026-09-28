@@ -8,6 +8,7 @@ import type {
   ToolInvocationRepository
 } from "../../../src/repositories/interfaces.js";
 import { RunsService } from "../../../src/services/runs-service.js";
+import type { RunQueuePublisher } from "../../../src/services/run-queue-service.js";
 
 const userContext: UserContext = {
   userId: "user_test",
@@ -32,6 +33,7 @@ function createRepositories(): {
   toolInvocationRepository: ToolInvocationRepository;
   nodeExecutionRepository: NodeExecutionRepository;
   nodeFeedbackRepository: NodeFeedbackRepository;
+  runQueuePublisher: RunQueuePublisher;
 } {
   return {
     jobRepository: {
@@ -59,6 +61,10 @@ function createRepositories(): {
       listByRunId: vi.fn(),
       listByExecutionIds: vi.fn(),
       createMany: vi.fn()
+    },
+    runQueuePublisher: {
+      enqueue: vi.fn(),
+      close: vi.fn()
     }
   };
 }
@@ -77,7 +83,8 @@ describe("RunsService", () => {
       repositories.jobRunRepository,
       repositories.toolInvocationRepository,
       repositories.nodeExecutionRepository,
-      repositories.nodeFeedbackRepository
+      repositories.nodeFeedbackRepository,
+      repositories.runQueuePublisher
     );
 
     const queuedRun = await runsService.enqueueRun(userContext, job.id);
@@ -87,6 +94,7 @@ describe("RunsService", () => {
     expect(queuedRun.triggerSource).toBe("manual");
     expect(repositories.jobRepository.findById).toHaveBeenCalledWith(job.id);
     expect(repositories.jobRunRepository.create).toHaveBeenCalledOnce();
+    expect(repositories.runQueuePublisher.enqueue).toHaveBeenCalledWith(queuedRun.id);
   });
 
   it("hydrates run reads with executions, feedback, and tool invocations", async () => {
@@ -144,7 +152,8 @@ describe("RunsService", () => {
       repositories.jobRunRepository,
       repositories.toolInvocationRepository,
       repositories.nodeExecutionRepository,
-      repositories.nodeFeedbackRepository
+      repositories.nodeFeedbackRepository,
+      repositories.runQueuePublisher
     );
 
     const runs = await runsService.listRuns(userContext);
@@ -164,7 +173,8 @@ describe("RunsService", () => {
       repositories.jobRunRepository,
       repositories.toolInvocationRepository,
       repositories.nodeExecutionRepository,
-      repositories.nodeFeedbackRepository
+      repositories.nodeFeedbackRepository,
+      repositories.runQueuePublisher
     );
 
     await expect(runsService.enqueueRun(userContext, "missing")).rejects.toMatchObject({
@@ -184,12 +194,48 @@ describe("RunsService", () => {
       repositories.jobRunRepository,
       repositories.toolInvocationRepository,
       repositories.nodeExecutionRepository,
-      repositories.nodeFeedbackRepository
+      repositories.nodeFeedbackRepository,
+      repositories.runQueuePublisher
     );
 
     await expect(runsService.enqueueRun(userContext, job.id)).rejects.toMatchObject({
       code: "job_not_found",
       statusCode: 404
     });
+  });
+
+  it("marks the run failed when queue publishing fails", async () => {
+    const repositories = createRepositories();
+    const queuedRun: JobRun = {
+      id: "run_1",
+      jobId: job.id,
+      status: "queued",
+      triggerSource: "manual",
+      startedAt: "2026-06-07T00:00:00.000Z"
+    };
+    vi.mocked(repositories.jobRepository.findById).mockResolvedValue(job);
+    vi.mocked(repositories.jobRunRepository.create).mockResolvedValue(queuedRun);
+    vi.mocked(repositories.jobRunRepository.update).mockImplementation(async (run) => run);
+    vi.mocked(repositories.runQueuePublisher.enqueue).mockRejectedValue(new Error("queue down"));
+    const runsService = new RunsService(
+      repositories.jobRepository,
+      repositories.jobRunRepository,
+      repositories.toolInvocationRepository,
+      repositories.nodeExecutionRepository,
+      repositories.nodeFeedbackRepository,
+      repositories.runQueuePublisher
+    );
+
+    await expect(runsService.enqueueRun(userContext, job.id)).rejects.toMatchObject({
+      code: "run_enqueue_failed",
+      statusCode: 500
+    });
+    expect(repositories.jobRunRepository.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: queuedRun.id,
+        status: "failed",
+        errorMessage: "Failed to enqueue run for background execution"
+      })
+    );
   });
 });

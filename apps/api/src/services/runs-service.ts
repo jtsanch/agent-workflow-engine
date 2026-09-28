@@ -8,6 +8,7 @@ import type {
 } from "../repositories/interfaces.js";
 import { createId } from "../common/ids.js";
 import { AppError } from "../common/errors.js";
+import type { RunQueuePublisher } from "./run-queue-service.js";
 
 export type HydratedRun = JobRun & {
   toolInvocations: ToolInvocation[];
@@ -25,7 +26,8 @@ export class RunsService {
     private readonly jobRunRepository: JobRunRepository,
     private readonly toolInvocationRepository: ToolInvocationRepository,
     private readonly nodeExecutionRepository: NodeExecutionRepository,
-    private readonly nodeFeedbackRepository: NodeFeedbackRepository
+    private readonly nodeFeedbackRepository: NodeFeedbackRepository,
+    private readonly runQueuePublisher: RunQueuePublisher
   ) {}
 
   async listRuns(userContext: UserContext): Promise<HydratedRun[]> {
@@ -94,7 +96,25 @@ export class RunsService {
       startedAt: new Date().toISOString()
     };
 
-    return this.jobRunRepository.create(run);
+    const queuedRun = await this.jobRunRepository.create(run);
+
+    try {
+      await this.runQueuePublisher.enqueue(queuedRun.id);
+      return queuedRun;
+    } catch (error) {
+      await this.jobRunRepository.update({
+        ...queuedRun,
+        status: "failed",
+        completedAt: new Date().toISOString(),
+        errorMessage: "Failed to enqueue run for background execution"
+      });
+
+      throw new AppError(
+        `Failed to enqueue run ${queuedRun.id}: ${error instanceof Error ? error.message : String(error)}`,
+        500,
+        "run_enqueue_failed"
+      );
+    }
   }
 }
 

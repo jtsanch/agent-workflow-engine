@@ -35,6 +35,10 @@ import { SearchService } from "./services/search-service.js";
 import { UserBootstrapService } from "./services/user-bootstrap-service.js";
 import { UserService } from "./services/user-service.js";
 import { UserUsageService } from "./services/user-usage-service.js";
+import {
+  InMemoryRunQueuePublisher,
+  PostgresRunQueuePublisher
+} from "./services/run-queue-service.js";
 
 export interface AppContext {
   config: AppConfig;
@@ -103,6 +107,10 @@ export function createAppContext(config: AppConfig): AppContext {
     userRepository && userUsageService ? new AdminUsersService(userRepository, userUsageService) : null;
   const authContextService =
     userService && userBootstrapService ? new AuthContextService(userService, userBootstrapService) : null;
+  const runQueuePublisher =
+    database.kind === "postgres"
+      ? new PostgresRunQueuePublisher(config.databaseUrl)
+      : new InMemoryRunQueuePublisher();
 
   if (config.env === "production" && (!userService || !userUsageService || !authContextService)) {
     throw new Error("API production runtime requires Postgres-backed auth and user services");
@@ -119,7 +127,8 @@ export function createAppContext(config: AppConfig): AppContext {
     jobRunRepository,
     toolInvocationRepository,
     nodeExecutionRepository,
-    nodeFeedbackRepository
+    nodeFeedbackRepository,
+    runQueuePublisher
   );
   const alertsService = new AlertsService(jobRepository, alertPreferenceRepository);
   const healthService = new HealthService();
@@ -138,6 +147,7 @@ export function createAppContext(config: AppConfig): AppContext {
     alertsService,
     searchService,
     async close() {
+      await runQueuePublisher.close();
       if (database.kind === "postgres") {
         await database.pool.end();
       }

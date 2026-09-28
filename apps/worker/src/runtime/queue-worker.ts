@@ -1,5 +1,6 @@
 import { createLogger } from "@personal-agent-os/observability";
 import { seedAgentDefinitions } from "@personal-agent-os/agent-sdk";
+import type { RunExecutionJobData } from "../run-queue.js";
 import { DAGExecutionError } from "./dag-engine.js";
 import { runJob } from "./job-runner.js";
 import {
@@ -10,130 +11,78 @@ import {
 
 const logger = createLogger("worker.queue");
 
-export type ProcessNextQueuedRunOptions = {
-  heartbeatIntervalMs?: number;
-};
-
-type LeaseHeartbeatController = {
-  assertOwned(): void;
-  stop(): Promise<void>;
-};
-
-export async function processNextQueuedRun(
+export async function processQueuedRun(
   persistence: WorkerPersistenceRepository,
-  options: ProcessNextQueuedRunOptions = {}
-): Promise<boolean> {
-  const claimed = await persistence.claimNextQueuedRun();
+  payload: RunExecutionJobData
+): Promise<void> {
+  const claimed = await persistence.prepareRunForExecution(payload.runId);
   if (!claimed) {
-    return false;
+    return;
   }
 
   const { job, runId } = claimed;
-  const leaseHeartbeat = startLeaseHeartbeat(persistence, runId, options.heartbeatIntervalMs ?? 10000);
   const agentDefinition = seedAgentDefinitions.find(
     (agent) => agent.dag.id === job.dagId || agent.key === job.agentDefinitionKey
   );
+
   if (!agentDefinition) {
     await failClaimedRun(persistence, runId, `Unknown workflow definition for dag: ${job.dagId}`);
-    await stopHeartbeat(leaseHeartbeat, runId);
-    return true;
+    return;
   }
-
-  let jobStatus: "succeeded" | "failed" = "succeeded";
-  let completedAt = new Date().toISOString();
-  let finalOutput: unknown = null;
-  let errorMessage: string | null = null;
-  let usageEvents: Awaited<ReturnType<typeof runJob>>["usageEvents"] = [];
-  // This flag is flipped off when the worker no longer owns the run.
-  // Once ownership is lost, this iteration should stop writing and let the
-  // newer owner continue the replay/recovery flow.
-  let canFinalizeClaimedRun = true;
 
   try {
     const now = new Date().toISOString();
     const usageState = await resetUsageCountersIfNeeded(persistence, job.userId, now);
-    leaseHeartbeat.assertOwned();
     if (isQuotaExceeded(usageState)) {
-      jobStatus = "failed";
-      errorMessage = "Quota exceeded";
-      return true;
+      await failClaimedRun(persistence, runId, "Quota exceeded");
+      return;
     }
 
     const executionResult = await runJob(job);
-    leaseHeartbeat.assertOwned();
-    completedAt = new Date().toISOString();
-    finalOutput = executionResult.finalOutput;
-    usageEvents = executionResult.usageEvents;
-
     await persistence.persistNodeExecutions(
       executionResult.nodeExecutions.map((nodeExecution) => ({
         ...nodeExecution,
         jobRunId: runId
       }))
     );
+
+    const completedAt = new Date().toISOString();
     await persistence.persistNodeFeedback(runId, executionResult.nodeFeedback);
-    leaseHeartbeat.assertOwned();
     await persistence.persistToolInvocations(runId, executionResult.toolInvocations, completedAt);
-    leaseHeartbeat.assertOwned();
     await persistence.upsertJobMemories(runId, job.id, executionResult.memoryWrites, completedAt);
+    await persistence.finalizeRun({
+      runId,
+      userId: job.userId,
+      jobId: job.id,
+      jobStatus: "succeeded",
+      completedAt,
+      finalOutput: executionResult.finalOutput,
+      errorMessage: null,
+      usageEvents: executionResult.usageEvents
+    });
   } catch (error) {
     if (error instanceof RunOwnershipLostError) {
-      canFinalizeClaimedRun = false;
-      logger.warn("Stopping run cleanup because lease ownership was lost", { runId });
-      return true;
+      logger.warn("Stopping run cleanup because run ownership was lost", { runId });
+      return;
     }
-
-    jobStatus = "failed";
-    errorMessage = error instanceof Error ? error.message : "Worker execution failed";
-    console.error(`Error executing job run ${runId}:`, error);
 
     if (error instanceof DAGExecutionError) {
-      try {
-        await persistence.persistNodeExecutions(
-          error.nodeExecutions.map((nodeExecution) => ({
-            ...nodeExecution,
-            jobRunId: runId
-          }))
-        );
-        await persistence.persistNodeFeedback(runId, error.nodeFeedback);
-      } catch (persistenceError) {
-        if (persistenceError instanceof RunOwnershipLostError) {
-          canFinalizeClaimedRun = false;
-          logger.warn("Stopping partial failure telemetry persistence because lease ownership was lost", { runId });
-          return true;
-        }
-
-        throw persistenceError;
-      }
-    }
-  } finally {
-    if (!(await stopHeartbeat(leaseHeartbeat, runId))) {
-      canFinalizeClaimedRun = false;
+      await persistFailureArtifacts(persistence, runId, error);
+      await failClaimedRun(persistence, runId, error.message);
+      return;
     }
 
-    if (canFinalizeClaimedRun) {
-      try {
-        await persistence.finalizeRun({
-          runId,
-          userId: job.userId,
-          jobId: job.id,
-          jobStatus,
-          completedAt,
-          finalOutput,
-          errorMessage,
-          usageEvents
-        });
-      } catch (transactionError) {
-        if (transactionError instanceof RunOwnershipLostError) {
-          logger.warn("Skipping run finalization because lease ownership was lost", { runId });
-        } else {
-          console.error(`Error in job completion transaction for run ${runId}:`, transactionError);
-        }
-      }
+    if (isExecutionFailure(error)) {
+      await failClaimedRun(
+        persistence,
+        runId,
+        error instanceof Error ? error.message : "Worker execution failed"
+      );
+      return;
     }
+
+    throw error;
   }
-
-  return true;
 }
 
 async function resetUsageCountersIfNeeded(
@@ -189,59 +138,9 @@ function isSameUtcMonth(left: Date, right: Date): boolean {
 
 export const __test__ = {
   getResetUsageState,
-  isQuotaExceeded
+  isQuotaExceeded,
+  isExecutionFailure
 };
-
-function startLeaseHeartbeat(
-  persistence: WorkerPersistenceRepository,
-  runId: string,
-  heartbeatIntervalMs: number
-): LeaseHeartbeatController {
-  let inFlight: Promise<void> | null = null;
-  let stopped = false;
-  let heartbeatError: Error | null = null;
-
-  const renew = async () => {
-    try {
-      await persistence.renewRunLease(runId);
-    } catch (error) {
-      if (error instanceof RunOwnershipLostError) {
-        heartbeatError = error;
-        return;
-      }
-
-      heartbeatError = error instanceof Error ? error : new Error(String(error));
-    }
-  };
-
-  const timer = setInterval(() => {
-    if (stopped || heartbeatError || inFlight) {
-      return;
-    }
-
-    inFlight = renew().finally(() => {
-      inFlight = null;
-    });
-  }, heartbeatIntervalMs);
-
-  return {
-    assertOwned() {
-      if (heartbeatError) {
-        throw heartbeatError;
-      }
-    },
-    async stop() {
-      stopped = true;
-      clearInterval(timer);
-      if (inFlight) {
-        await inFlight;
-      }
-      if (heartbeatError) {
-        throw heartbeatError;
-      }
-    }
-  };
-}
 
 async function failClaimedRun(
   persistence: WorkerPersistenceRepository,
@@ -260,16 +159,35 @@ async function failClaimedRun(
   }
 }
 
-async function stopHeartbeat(heartbeat: LeaseHeartbeatController, runId: string): Promise<boolean> {
+async function persistFailureArtifacts(
+  persistence: WorkerPersistenceRepository,
+  runId: string,
+  error: DAGExecutionError
+): Promise<void> {
   try {
-    await heartbeat.stop();
-    return true;
-  } catch (error) {
-    if (error instanceof RunOwnershipLostError) {
-      logger.warn("Stopping work because lease ownership was lost", { runId });
-      return false;
+    await persistence.persistNodeExecutions(
+      error.nodeExecutions.map((nodeExecution) => ({
+        ...nodeExecution,
+        jobRunId: runId
+      }))
+    );
+    await persistence.persistNodeFeedback(runId, error.nodeFeedback);
+  } catch (persistenceError) {
+    if (persistenceError instanceof RunOwnershipLostError) {
+      logger.warn("Stopping partial failure telemetry persistence because run ownership was lost", { runId });
+      return;
     }
 
-    throw error;
+    throw persistenceError;
   }
+}
+
+function isExecutionFailure(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return !/^(connect|Connection|ECONN|ETIMEDOUT|timeout|terminating connection|remaining connection slots)/i.test(
+    error.message
+  );
 }

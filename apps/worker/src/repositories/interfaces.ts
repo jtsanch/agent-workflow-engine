@@ -40,8 +40,7 @@ export interface FinalizeRunRecord {
 }
 
 export interface WorkerPersistenceRepository {
-  claimNextQueuedRun(): Promise<ClaimedRunRecord | null>;
-  renewRunLease(runId: string): Promise<void>;
+  prepareRunForExecution(runId: string): Promise<ClaimedRunRecord | null>;
   failRun(runId: string, errorMessage: string, completedAt?: string): Promise<void>;
   loadUsageState(userId: string): Promise<UsageStateRecord>;
   updateUsageState(userId: string, state: UsageStateRecord): Promise<void>;

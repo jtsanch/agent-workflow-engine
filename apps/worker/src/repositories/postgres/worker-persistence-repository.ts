@@ -41,15 +41,13 @@ function toJsonObject(value: Record<string, unknown>): JsonObject {
 export class PostgresWorkerPersistenceRepository implements WorkerPersistenceRepository {
   constructor(
     private readonly pool: Pool,
-    private readonly workerId: string,
-    private readonly leaseDurationMs: number
+    private readonly workerId: string
   ) {}
 
-  async claimNextQueuedRun(): Promise<ClaimedRunRecord | null> {
+  async prepareRunForExecution(runId: string): Promise<ClaimedRunRecord | null> {
     const client = await this.pool.connect();
     try {
       const claimedAt = new Date().toISOString();
-      const leaseExpiresAt = new Date(Date.now() + this.leaseDurationMs).toISOString();
 
       await pquery(client, "begin");
       const result = await pquery<QueuedRunRow>(
@@ -69,17 +67,10 @@ export class PostgresWorkerPersistenceRepository implements WorkerPersistenceRep
             j.updated_at
           from job_runs jr
           inner join jobs j on j.id = jr.job_id
-          where jr.status = 'queued'
-             or (
-               jr.status = 'running'
-               and jr.lease_expires_at is not null
-               and jr.lease_expires_at <= $1::timestamptz
-             )
-          order by jr.queued_at asc, jr.id asc
-          limit 1
+          where jr.id = $1
           for update skip locked
         `,
-        [claimedAt]
+        [runId]
       );
 
       const row = result.rows[0];
@@ -89,26 +80,37 @@ export class PostgresWorkerPersistenceRepository implements WorkerPersistenceRep
         return null;
       }
 
+      if (row.run_status !== "queued" && row.run_status !== "running") {
+        await pquery(client, "rollback");
+        return null;
+      }
+
       if (row.run_status === "running") {
         await this.clearRunReplayArtifacts(client, row.run_id);
       }
 
-      await pquery(
+      const updateResult = await pquery(
         client,
         `
           update job_runs
           set status = 'running',
               claimed_at = $2::timestamptz,
-              lease_expires_at = $3::timestamptz,
-              last_heartbeat_at = $2::timestamptz,
-              claimed_by_worker_id = $4,
+              lease_expires_at = null,
+              last_heartbeat_at = null,
+              claimed_by_worker_id = $3,
               completed_at = null,
               output = null,
               error_message = null
           where id = $1
+            and status in ('queued', 'running')
         `,
-        [row.run_id, claimedAt, leaseExpiresAt, this.workerId]
+        [row.run_id, claimedAt, this.workerId]
       );
+
+      if (updateResult.rowCount === 0) {
+        await pquery(client, "rollback");
+        return null;
+      }
       await pquery(client, "commit");
 
       return {
@@ -133,27 +135,6 @@ export class PostgresWorkerPersistenceRepository implements WorkerPersistenceRep
     }
   }
 
-  async renewRunLease(runId: string): Promise<void> {
-    const heartbeatAt = new Date().toISOString();
-    const leaseExpiresAt = new Date(Date.now() + this.leaseDurationMs).toISOString();
-    const result = await pquery(
-      this.pool,
-      `
-        update job_runs
-        set lease_expires_at = $3::timestamptz,
-            last_heartbeat_at = $2::timestamptz
-        where id = $1
-          and status = 'running'
-          and claimed_by_worker_id = $4
-      `,
-      [runId, heartbeatAt, leaseExpiresAt, this.workerId]
-    );
-
-    if (result.rowCount === 0) {
-      throw new RunOwnershipLost(runId);
-    }
-  }
-
   async failRun(runId: string, errorMessage: string, completedAt?: string): Promise<void> {
     const finalizedAt = completedAt ?? new Date().toISOString();
     const result = await pquery(
@@ -163,7 +144,9 @@ export class PostgresWorkerPersistenceRepository implements WorkerPersistenceRep
         set status = 'failed',
             completed_at = $2::timestamptz,
             error_message = $3,
-            lease_expires_at = null
+            lease_expires_at = null,
+            last_heartbeat_at = null,
+            claimed_by_worker_id = null
         where id = $1
           and status = 'running'
           and claimed_by_worker_id = $4
@@ -461,7 +444,9 @@ export class PostgresWorkerPersistenceRepository implements WorkerPersistenceRep
                 completed_at = $2::timestamptz,
                 output = $3::jsonb,
                 error_message = null,
-                lease_expires_at = null
+                lease_expires_at = null,
+                last_heartbeat_at = null,
+                claimed_by_worker_id = null
             where id = $1
               and status = 'running'
               and claimed_by_worker_id = $4
@@ -480,7 +465,9 @@ export class PostgresWorkerPersistenceRepository implements WorkerPersistenceRep
             set status = 'failed',
                 completed_at = $2::timestamptz,
                 error_message = $3,
-                lease_expires_at = null
+                lease_expires_at = null,
+                last_heartbeat_at = null,
+                claimed_by_worker_id = null
             where id = $1
               and status = 'running'
               and claimed_by_worker_id = $4

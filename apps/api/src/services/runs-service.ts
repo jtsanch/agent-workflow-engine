@@ -37,9 +37,13 @@ export class RunsService {
     userContext: UserContext,
     runId: string
   ): Promise<HydratedRun> {
-    const runs = await this.jobRunRepository.listByUser(userContext.userId);
-    const run = runs.find((candidate) => candidate.id === runId);
+    const run = await this.jobRunRepository.findById(runId);
     if (!run) {
+      throw new AppError(`Unknown run: ${runId}`, 404, "run_not_found");
+    }
+
+    const job = await this.jobRepository.findById(run.jobId);
+    if (!job || job.userId !== userContext.userId) {
       throw new AppError(`Unknown run: ${runId}`, 404, "run_not_found");
     }
 
@@ -83,6 +87,9 @@ export class RunsService {
     }
     if (job.userId !== userContext.userId) {
       throw new AppError(`Unknown job: ${jobId}`, 404, "job_not_found");
+    }
+    if (job.status !== "active") {
+      throw new AppError(`Job is not active: ${jobId}`, 422, "job_not_active");
     }
 
     const run: LeaseAwareJobRun = {
